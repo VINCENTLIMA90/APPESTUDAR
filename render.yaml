@@ -1,0 +1,17 @@
+# Demonstração gratuita. O disco deste plano é temporário: contas e progresso
+# podem desaparecer após um reinício ou nova publicação. Não usar para clientes.
+services:
+  - type: web
+    name: rumbo-demo
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev --no-audit --no-fund && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /tmp/rumbo-demo-data

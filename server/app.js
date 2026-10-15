@@ -1,0 +1,228 @@
+import express from 'express';
+import { DatabaseSync } from 'node:sqlite';
+import { scrypt, randomBytes, randomInt, timingSafeEqual, createHash } from 'node:crypto';
+import { promisify } from 'node:util';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { lessons, questions, tasks, languages, officialSources } from './content.js';
+import { evaluateAI, providers } from './ai.js';
+import { extractMaterials, materialFingerprint } from './sources.js';
+
+const hashPassword = promisify(scrypt);
+const digest = token => createHash('sha256').update(token).digest('hex');
+const dateKey = date => new Date(date).toISOString().slice(0, 10);
+export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, sourceFetch = fetch } = {}) {
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  const db = new DatabaseSync(path.join(dataDir, 'rumbo.sqlite'));
+  db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, salt TEXT NOT NULL, language TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS completions (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, lesson_id TEXT NOT NULL, completed_at TEXT NOT NULL, PRIMARY KEY(user_id, lesson_id));
+    CREATE TABLE IF NOT EXISTS quizzes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, module TEXT NOT NULL, mode TEXT NOT NULL, question_ids TEXT NOT NULL, created_at TEXT NOT NULL, result TEXT);
+    CREATE TABLE IF NOT EXISTS submissions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, text TEXT NOT NULL, audio BLOB, mime TEXT, rubric TEXT NOT NULL, feedback TEXT, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, checked_at TEXT, verified_at TEXT, fingerprint TEXT, changed_at TEXT, error TEXT, materials TEXT NOT NULL DEFAULT '[]');`);
+  if (!db.prepare('PRAGMA table_info(sources)').all().some(c => c.name === 'materials')) db.exec("ALTER TABLE sources ADD COLUMN materials TEXT NOT NULL DEFAULT '[]'; UPDATE sources SET fingerprint=NULL, verified_at=NULL, changed_at=NULL");
+  for (const source of officialSources) db.prepare('INSERT OR IGNORE INTO sources(id) VALUES (?)').run(source.id);
+  const app = express();
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.set('X-Frame-Options', 'DENY');
+    if (req.path.startsWith('/api/')) res.set('Cache-Control', 'no-store');
+    if (['POST', 'PATCH', 'DELETE'].includes(req.method)) {
+      // Browsers cannot send these requests cross-site without a preflight (no CORS is enabled).
+      if (!req.is('application/json') || req.get('sec-fetch-site') === 'cross-site') return res.status(403).json({ error: 'request_rejected' });
+      const origin = req.get('origin');
+      if (origin) {
+        try { if (new URL(origin).host !== req.get('host')) return res.status(403).json({ error: 'request_rejected' }); } catch { return res.status(403).json({ error: 'request_rejected' }); }
+      }
+    }
+    next();
+  });
+  app.use(express.json({ limit: '9mb' }));
+  const attempts = new Map();
+  function limit(req, res, next) {
+    const key = req.ip;
+    const bucket = attempts.get(key) || { count: 0, until: Date.now() + 15 * 60000 };
+    if (bucket.until < Date.now()) { bucket.count = 0; bucket.until = Date.now() + 15 * 60000; }
+    bucket.count++;
+    attempts.set(key, bucket);
+    if (bucket.count > 30) return res.status(429).json({ error: 'rate_limit' });
+    next();
+  }
+  app.use((req, res, next) => {
+    const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('rumbo_session='))?.slice(14);
+    if (token && /^[a-f0-9]{64}$/.test(token)) req.user = db.prepare('SELECT u.id,u.name,u.email,u.language,u.created_at FROM users u JOIN sessions s ON u.id=s.user_id WHERE s.token=? AND s.expires>?').get(digest(token), Date.now());
+    next();
+  });
+  function requireUser(req, res, next) { if (!req.user) return res.status(401).json({ error: 'login_required' }); next(); }
+  function session(res, id) {
+    const token = randomBytes(32).toString('hex');
+    db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());
+    db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(digest(token), id, Date.now() + 30 * 86400000);
+    res.cookie('rumbo_session', token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 30 * 86400000, path: '/' });
+  }
+  app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+  app.get('/api/catalog', (_req, res) => res.json({ lessons, tasks, languages, providers: Object.entries(providers).map(([id, p]) => ({ id, label: p.label, model: p.model })) }));
+  app.get('/api/me', (req, res) => res.json({ user: req.user || null }));
+  app.post('/api/auth/register', limit, async (req, res) => {
+    const { name, email, password, language } = req.body;
+    if (typeof name !== 'string' || !name.trim() || name.length > 70 || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || typeof password !== 'string' || password.length < 10 || password.length > 128) return res.status(400).json({ error: 'registration_invalid' });
+    const normalizedEmail = email.trim().toLowerCase();
+    if (db.prepare('SELECT id FROM users WHERE email=?').get(normalizedEmail)) return res.status(409).json({ error: 'email_exists' });
+    const salt = randomBytes(16).toString('hex');
+    const passwordHash = (await hashPassword(password, salt, 64)).toString('hex');
+    const id = randomBytes(16).toString('hex');
+    try { db.prepare('INSERT INTO users VALUES (?,?,?,?,?,?,?)').run(id, name.trim(), normalizedEmail, passwordHash, salt, languages.includes(language) ? language : 'pt-PT', new Date().toISOString()); }
+    catch (error) { if (error.code?.includes('CONSTRAINT')) return res.status(409).json({ error: 'email_exists' }); throw error; }
+    session(res, id);
+    res.status(201).json({ user: db.prepare('SELECT id,name,email,language,created_at FROM users WHERE id=?').get(id) });
+  });
+  app.post('/api/auth/login', limit, async (req, res) => {
+    const { email, password } = req.body;
+    if (typeof email !== 'string' || typeof password !== 'string' || password.length > 128) return res.status(400).json({ error: 'credentials_invalid' });
+    const user = db.prepare('SELECT * FROM users WHERE email=?').get(email.trim().toLowerCase());
+    const candidate = await hashPassword(password, user?.salt || 'dummy-salt-for-timing', 64);
+    if (!user || !timingSafeEqual(candidate, Buffer.from(user.password, 'hex'))) return res.status(401).json({ error: 'credentials_invalid' });
+    session(res, user.id);
+    res.json({ user: { id: user.id, name: user.name, email: user.email, language: user.language, created_at: user.created_at } });
+  });
+  app.post('/api/auth/logout', (req, res) => {
+    const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('rumbo_session='))?.slice(14);
+    if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(digest(token));
+    res.clearCookie('rumbo_session', { path: '/', httpOnly: true, sameSite: 'lax', secure });
+    res.json({ ok: true });
+  });
+  app.patch('/api/me', requireUser, (req, res) => {
+    if (!languages.includes(req.body.language)) return res.status(400).json({ error: 'invalid_language' });
+    db.prepare('UPDATE users SET language=? WHERE id=?').run(req.body.language, req.user.id);
+    res.json({ ok: true });
+  });
+  app.get('/api/progress', requireUser, (req, res) => {
+    const completed = db.prepare('SELECT lesson_id,completed_at FROM completions WHERE user_id=? ORDER BY completed_at DESC').all(req.user.id);
+    const results = db.prepare('SELECT id,module,mode,created_at,result FROM quizzes WHERE user_id=? AND result IS NOT NULL ORDER BY created_at DESC').all(req.user.id).map(q => ({ ...q, result: JSON.parse(q.result) }));
+    const submissions = db.prepare('SELECT id,kind,text,rubric,feedback,created_at,length(audio) AS audio_bytes FROM submissions WHERE user_id=? ORDER BY created_at DESC').all(req.user.id).map(s => ({ ...s, rubric: JSON.parse(s.rubric), feedback: s.feedback ? JSON.parse(s.feedback) : null }));
+    const activeDays = [...new Set([...completed.map(l => dateKey(l.completed_at)), ...results.map(r => dateKey(r.created_at)), ...submissions.map(s => dateKey(s.created_at))])].sort().reverse();
+    let streak = 0;
+    let cursor = new Date();
+    if (!activeDays.includes(dateKey(cursor))) cursor.setUTCDate(cursor.getUTCDate() - 1);
+    while (activeDays.includes(dateKey(cursor))) { streak++; cursor.setUTCDate(cursor.getUTCDate() - 1); }
+    res.json({ completed, results, submissions, activeDays, streak });
+  });
+  app.post('/api/lessons/:id/complete', requireUser, (req, res) => {
+    if (!lessons.some(l => l.id === req.params.id)) return res.status(404).json({ error: 'not_found' });
+    db.prepare('INSERT OR IGNORE INTO completions VALUES (?,?,?)').run(req.user.id, req.params.id, new Date().toISOString());
+    res.json({ ok: true });
+  });
+  app.post('/api/quizzes', requireUser, (req, res) => {
+    const { module, mode } = req.body;
+    if (!['ccse', 'dele'].includes(module) || !['practice', 'simulation', 'assessment', 'review'].includes(mode)) return res.status(400).json({ error: 'invalid_quiz' });
+    const shuffle = xs => { const items = [...xs]; for (let i = items.length - 1; i > 0; i--) { const j = randomInt(i + 1); [items[i], items[j]] = [items[j], items[i]]; } return items; };
+    let pool = questions.filter(q => q.module === module);
+    if (mode === 'review') {
+      const errors = new Map();
+      const history = db.prepare('SELECT result FROM quizzes WHERE user_id=? AND result IS NOT NULL ORDER BY created_at ASC').all(req.user.id);
+      for (const r of history) for (const a of JSON.parse(r.result).answers) errors.set(a.id, !a.isCorrect);
+      pool = pool.filter(q => errors.get(q.id));
+      if (!pool.length) return res.status(400).json({ error: 'no_errors' });
+    }
+    let selected;
+    if (mode === 'assessment') selected = ['reading', 'listening'].flatMap(c => shuffle(questions.filter(q => q.category === c)).slice(0, 4)).concat(shuffle(questions.filter(q => q.module === 'ccse')).slice(0, 4));
+    else if (module === 'ccse' && mode === 'simulation') selected = shuffle(pool.filter(q => q.category === 'government' && q.options.length === 3)).slice(0, 10)
+      .concat(shuffle(pool.filter(q => q.category === 'government' && q.options.length === 2)).slice(0, 3),
+        shuffle(pool.filter(q => q.category === 'geography')).slice(0, 2),
+        shuffle(pool.filter(q => q.category === 'culture')).slice(0, 3),
+        shuffle(pool.filter(q => q.category === 'society')).slice(0, 7));
+    else if (module === 'dele' && mode === 'simulation') selected = ['reading', 'listening'].flatMap(c => shuffle(pool.filter(q => q.category === c)).slice(0, 8));
+    else selected = shuffle(pool).slice(0, 10);
+    const id = randomBytes(16).toString('hex');
+    db.prepare('INSERT INTO quizzes VALUES (?,?,?,?,?,?,NULL)').run(id, req.user.id, module, mode, JSON.stringify(selected.map(q => q.id)), new Date().toISOString());
+    res.status(201).json({ id, module, mode, minutes: mode === 'simulation' ? module === 'ccse' ? 45 : 35 : null, questions: selected.map(({ correct, explanation, ...q }) => q) });
+  });
+  app.post('/api/quizzes/:id/submit', requireUser, (req, res) => {
+    const quiz = db.prepare('SELECT * FROM quizzes WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
+    if (!quiz) return res.status(404).json({ error: 'not_found' });
+    if (quiz.result) return res.json(JSON.parse(quiz.result));
+    const ids = JSON.parse(quiz.question_ids);
+    const answers = req.body.answers;
+    if (!Array.isArray(answers) || answers.length !== ids.length || answers.some(a => a !== null && (!Number.isInteger(a) || a < 0 || a > 2))) return res.status(400).json({ error: 'invalid_answers' });
+    const graded = ids.map((id, i) => { const q = questions.find(q => q.id === id); return { ...q, selected: answers[i], isCorrect: answers[i] === q.correct }; });
+    const score = graded.filter(q => q.isCorrect).length;
+    const skills = Object.fromEntries([...new Set(graded.map(q => q.category))].map(c => { const group = graded.filter(q => q.category === c); return [c, { correct: group.filter(q => q.isCorrect).length, total: group.length }]; }));
+    const result = { id: quiz.id, module: quiz.module, mode: quiz.mode, score, total: ids.length, percent: Math.round(score / ids.length * 100), skills, answers: graded, finishedAt: new Date().toISOString() };
+    db.prepare('UPDATE quizzes SET result=? WHERE id=?').run(JSON.stringify(result), quiz.id);
+    res.json(result);
+  });
+  app.post('/api/submissions', requireUser, (req, res) => {
+    const { kind, text = '', audio, mime = '', rubric = [] } = req.body;
+    if (!tasks[kind] || typeof text !== 'string' || text.length > 12000 || !Array.isArray(rubric) || rubric.some(v => !Number.isInteger(v) || v < 0 || v > 3) || rubric.length > 4) return res.status(400).json({ error: 'invalid_submission' });
+    if (audio && (typeof audio !== 'string' || audio.length > 8000000 || !/^[A-Za-z0-9+/=]+$/.test(audio) || !/^audio\/(webm|mp4|ogg|mpeg|wav)(;codecs=[a-z0-9,.-]+)?$/i.test(mime))) return res.status(400).json({ error: 'invalid_audio' });
+    if (!text.trim() && !audio) return res.status(400).json({ error: 'empty_submission' });
+    const id = randomBytes(16).toString('hex');
+    db.prepare('INSERT INTO submissions VALUES (?,?,?,?,?,?,?,?,?)').run(id, req.user.id, kind, text, audio ? Buffer.from(audio, 'base64') : null, mime, JSON.stringify([...new Set(rubric)]), null, new Date().toISOString());
+    res.status(201).json({ id });
+  });
+  app.get('/api/submissions/:id/audio', requireUser, (req, res) => {
+    const row = db.prepare('SELECT audio,mime FROM submissions WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
+    if (!row?.audio) return res.status(404).json({ error: 'not_found' });
+    res.type(row.mime).send(Buffer.from(row.audio));
+  });
+  const aiBusy = new Set();
+  app.post('/api/submissions/:id/evaluate', requireUser, async (req, res) => {
+    const row = db.prepare('SELECT * FROM submissions WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    if (row.feedback) return res.json(JSON.parse(row.feedback));
+    if (aiBusy.has(req.user.id)) return res.status(429).json({ error: 'ai_busy' });
+    const { key, provider } = req.body;
+    if (!providers[provider] || typeof key !== 'string' || key.length < 10 || key.length > 1024) return res.status(400).json({ error: 'ai_key' });
+    aiBusy.add(req.user.id);
+    try {
+      const feedback = await ai({ key, provider, kind: row.kind, text: row.text, audio: row.audio ? Buffer.from(row.audio).toString('base64') : null, mime: row.mime, language: req.user.language, task: tasks[row.kind].prompt });
+      db.prepare('UPDATE submissions SET feedback=? WHERE id=?').run(JSON.stringify(feedback), row.id);
+      res.json(feedback);
+    } catch (error) { res.status(502).json({ error: ['ai_auth', 'ai_quota', 'ai_text', 'ai_format', 'ai_upstream'].includes(error.message) ? error.message : 'ai_network' }); }
+    finally { aiBusy.delete(req.user.id); }
+  });
+  app.get('/api/export', requireUser, (req, res) => {
+    const completions = db.prepare('SELECT lesson_id,completed_at FROM completions WHERE user_id=?').all(req.user.id);
+    const quizzes = db.prepare('SELECT module,mode,created_at,result FROM quizzes WHERE user_id=? AND result IS NOT NULL').all(req.user.id).map(q => ({ ...q, result: JSON.parse(q.result) }));
+    const submissions = db.prepare('SELECT kind,text,mime,rubric,feedback,created_at,audio FROM submissions WHERE user_id=?').all(req.user.id).map(s => ({ ...s, audio: s.audio ? Buffer.from(s.audio).toString('base64') : null, rubric: JSON.parse(s.rubric), feedback: s.feedback ? JSON.parse(s.feedback) : null }));
+    res.attachment('rumbo-progress.json').json({ user: req.user, completions, quizzes, submissions });
+  });
+  app.delete('/api/me', requireUser, (req, res) => { db.prepare('DELETE FROM users WHERE id=?').run(req.user.id); res.clearCookie('rumbo_session', { path: '/' }); res.json({ ok: true }); });
+
+  let checking = false;
+  async function checkSources() {
+    if (checking) return;
+    checking = true;
+    try {
+      await Promise.all(officialSources.map(async source => {
+        const now = new Date().toISOString();
+        const previous = db.prepare('SELECT * FROM sources WHERE id=?').get(source.id);
+        try {
+          const response = await sourceFetch(source.url, { signal: AbortSignal.timeout(12000), redirect: 'error', headers: { 'User-Agent': 'Rumbo-study-source-monitor/0.1' } });
+          if (!response.ok) throw new Error('http_' + response.status);
+          if (!response.headers.get('content-type')?.includes('text/html')) throw new Error('unexpected_content');
+          let body = '';
+          const decoder = new TextDecoder();
+          for await (const chunk of response.body) { body += decoder.decode(chunk, { stream: true }); if (body.length > 3000000) throw new Error('response_too_large'); }
+          body += decoder.decode();
+          const materials = extractMaterials(body, source);
+          if (!materials.length) throw new Error('materials_not_found');
+          const fingerprint = materialFingerprint(materials);
+          db.prepare('UPDATE sources SET checked_at=?,verified_at=?,fingerprint=?,changed_at=?,error=NULL,materials=? WHERE id=?').run(now, now, fingerprint, previous.fingerprint && previous.fingerprint !== fingerprint ? now : previous.changed_at, JSON.stringify(materials), source.id);
+        } catch (error) { db.prepare('UPDATE sources SET checked_at=?,error=? WHERE id=?').run(now, error.message.startsWith('http_') || ['materials_not_found', 'unexpected_content'].includes(error.message) ? error.message : 'network_unavailable', source.id); }
+      }));
+    } finally { checking = false; }
+  }
+  app.get('/api/sources', (_req, res) => res.json({ sources: officialSources.map(s => { const row = db.prepare('SELECT * FROM sources WHERE id=?').get(s.id); return { ...s, ...row, materials: JSON.parse(row.materials) }; }), checking }));
+  app.post('/api/sources/check', requireUser, async (_req, res) => {
+    const latest = db.prepare('SELECT MAX(checked_at) AS last FROM sources').get().last;
+    if (!latest || Date.now() - Date.parse(latest) > 3600000) await checkSources();
+    res.json({ ok: true });
+  });
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
+  app.use((error, _req, res, _next) => { res.status(error.type === 'entity.too.large' ? 413 : error.type === 'entity.parse.failed' ? 400 : 500).json({ error: error.type === 'entity.too.large' ? 'too_large' : 'request_failed' }); });
+  return { app, db, checkSources };
+}
