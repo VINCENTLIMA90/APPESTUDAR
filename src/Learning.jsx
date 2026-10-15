@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowRight, BookOpen, CalendarDays, Check, Clock3, Layers3, RotateCcw, Sparkles, Target, Trophy } from 'lucide-react';
 import { useApp } from './App';
 import { api } from './api';
+import {LockedFeature} from './Access';
 import { ProgressBar } from './components';
 
 export function useRemote(path, enabled = true, revision = '') {
@@ -14,8 +15,8 @@ const formatDate=(date,lang)=>new Intl.DateTimeFormat(lang,{dateStyle:'medium',t
 const madridDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 
 export function ExamCountdown(){
-  const {user,t,lang,navigate}=useApp();
-  const {data,error,reload}=useRemote('/plan',!!user);
+  const {user,t,lang,navigate,access}=useApp();
+  const {data,error,reload}=useRemote('/plan',!!user&&!!access?.modules.length);
   const [today,setToday]=useState(madridDay);
   useEffect(()=>{
     const update=()=>setToday(madridDay());
@@ -24,6 +25,7 @@ export function ExamCountdown(){
     return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',update);};
   },[]);
   if(!user)return null;
+  if(!access?.modules.length)return <LockedFeature title={t('setExamDate')}/>;
   if(error)return <section className="exam-countdown"><CalendarDays size={25}/><p>{t('examDateLoadError')}</p><button className="text-button" onClick={reload}>{t('retry')}</button></section>;
   if(!data)return <section className="exam-countdown" aria-busy="true"><CalendarDays size={25}/><p>{t('loading')}</p></section>;
   const target=data.settings.target_date;
@@ -34,15 +36,16 @@ export function ExamCountdown(){
 }
 
 export function PlanSummary() {
-  const {user,t,lang,progress,navigate,catalog,openLesson}=useApp();
-  const {data}=useRemote('/plan',!!user,[progress.results.length,progress.completed.length,progress.submissions.length].join('-'));
+  const {user,t,lang,progress,navigate,catalog,openLesson,access}=useApp();
+  const {data}=useRemote('/plan',!!user&&!!access?.modules.length,[progress.results.length,progress.completed.length,progress.submissions.length].join('-'));
+  if(user&&!access?.modules.length)return <LockedFeature title={t('plan')}/>;
   if(!data)return null;
   const lesson=catalog.lessons.find(l=>l.id===data.recommendation.lessonId);
   return <section className="daily-path"><div className="daily-path-icon"><CalendarDays size={25}/></div><div><span className="eyebrow">{t('todayPlan')}</span><h3>{t(data.recommendation.category)}</h3><p>{t('forecast')}: {formatDate(data.estimate.from,lang)} – {formatDate(data.estimate.to,lang)}</p></div><div className="daily-path-actions">{lesson&&<button className="button primary" onClick={()=>openLesson(lesson)}>{t('continue')}<ArrowRight size={15}/></button>}<button className="text-button" onClick={()=>navigate('plan')}>{t('plan')}<ArrowRight size={14}/></button></div></section>;
 }
 export function PlanPage() {
-  const {user,t,lang,notify,navigate,catalog,openLesson}=useApp();
-  const {data,error,reload}=useRemote('/plan',!!user);
+  const {user,t,lang,notify,navigate,catalog,openLesson,access}=useApp();
+  const {data,error,reload}=useRemote('/plan',!!user&&!!access?.modules.length);
   const [form,setForm]=useState(null),[busy,setBusy]=useState(false);
   useEffect(()=>{if(data)setForm(data.settings);},[data]);
   if(!user)return <LoginGate/>;

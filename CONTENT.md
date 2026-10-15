@@ -13,7 +13,7 @@ As páginas oficiais [DELE A2](https://examenes.cervantes.es/es/dele/examenes/a2
 
 As duas claves de respostas foram descarregadas e consultadas em 15/10/2026. As respostas de cada uma das 25 posições foram conferidas. Os SHA-256 dos ficheiros consultados constam de `server/exam.js`. O servidor verifica novamente estes ficheiros no arranque e na verificação diária das fontes. Se uma clave mudar, suspende a correção desse modelo até revisão. Uma falha de rede não é tratada como mudança de conteúdo; o estado de verificação fica visível e mantém-se a referência datada. O utilizador pode consultar as claves nas fontes oficiais.
 
-Os tempos, quantidades e extensões da escrita (60–70 palavras na tarefa 1 e 70–80 na tarefa 2) foram conferidos na guia oficial A2. A prática rápida de 16 perguntas continua disponível em separado e usa voz sintética identificada; o percurso completo usa os quatro áudios naturais do modelo oficial.
+Os tempos, quantidades e extensões da escrita (60–70 palavras na tarefa 1 e 70–80 na tarefa 2) foram conferidos na guia oficial A2. A prática rápida de 16 perguntas continua disponível em separado e usa MP3 pré-gerados quando existentes, com transcrição se faltar o ficheiro; o percurso completo usa os quatro áudios naturais do modelo oficial.
 
 Para o CCSE, foram consultadas as páginas oficiais de informação e estrutura. A página de preparação refere o manual 2026 e os áudios 2026, mas a resposta de rede dessa página permaneceu interrompida e o manual integral não foi obtido. Não se declara o banco completo CCSE importado nem a edição do manual validada integralmente. Os exercícios próprios evitam questões sobre titulares de cargos ou outros dados que não tenham sido confirmados. O simulado mantém 25 perguntas em cinco tarefas (10 + 3 + 2 + 3 + 7), incluindo três itens de verdadeiro/falso.
 
@@ -25,9 +25,9 @@ Na versão `heuristic-v1`, a carga de referência é de 6–24 horas para CCSE e
 
 ## Tutor e IA
 
-O tutor oferece conversa, explicação de erros e exercícios dirigidos. Usa erros recentes e os últimos comentários de escrita/oralidade como contexto. Mantém as conversas na conta, recebe a chave de API apenas na chamada e exige consentimento explícito antes de consumir créditos. As correções de respostas podem incluir exercícios sobre erros encontrados.
+O tutor oferece conversa, explicação de erros e exercícios dirigidos. Usa erros recentes e os últimos comentários de escrita/oralidade como contexto. Mantém as conversas na conta, usa a chave configurada no servidor e exige consentimento explícito antes de consumir créditos. As correções de respostas podem incluir exercícios sobre erros encontrados.
 
-Os testes de IA e tutor usam fornecedores simulados. Não comprovam qualidade pedagógica, disponibilidade dos modelos ou custos de uma chamada real. A correção real continua dependente da chave pessoal, do saldo e do acesso aos modelos do fornecedor.
+Os testes de IA e tutor usam fornecedores simulados. Não comprovam qualidade pedagógica, disponibilidade dos modelos ou custos de uma chamada real. A correção real depende da configuração do servidor e do acesso aos modelos do fornecedor. As quotas por ciclo são aplicadas no servidor.
 
 ## Dados
 
@@ -35,4 +35,4 @@ As alterações ao esquema SQLite são aditivas e preservam contas e histórico 
 
 ## Acesso às aulas
 
-As duas primeiras aulas de cada módulo são gratuitas. O acesso às restantes é controlado no servidor para subscrições CCSE (15 €/mês), DELE A2 (15 €/mês) ou ambos (20 €/mês). Os pagamentos ainda não estão ligados a uma conta Stripe e ficam indisponíveis na demonstração. A integração, a configuração e as verificações pendentes constam de [BILLING.md](BILLING.md). O número de aulas representa o catálogo de estudo; o plano continua a depender da avaliação e da disponibilidade de cada pessoa.
+As duas primeiras aulas de cada módulo são gratuitas. O acesso às restantes é controlado no servidor para subscrições CCSE (15 €/mês), DELE A2 (15 €/mês) ou ambos (20 €/mês). O plano cobre todas as ferramentas do módulo. A avaliação completa e uma tentativa de simulado por módulo são gratuitas; a IA gratuita tem quota zero. Os pagamentos ainda não estão ligados a uma conta Stripe e ficam indisponíveis na demonstração. A integração, a configuração e as verificações pendentes constam de [BILLING.md](BILLING.md). O número de aulas representa o catálogo de estudo; o plano continua a depender da avaliação e da disponibilidade de cada pessoa.

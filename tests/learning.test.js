@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {nextReview,estimatePlan,skillSummary,DAY} from '../server/learning.js';
 import {gradeModel} from '../server/exam.js';
+import {grantPlan,testAIConfig} from './helpers.js';
 import {createApp} from '../server/app.js';
 test('review delays grow for remembered cards and reset to ten minutes after a lapse',()=>{
  const now=new Date('2026-10-15T10:00:00Z');
@@ -29,12 +30,12 @@ test('official answer keys grade A–K correctly, including the listening matchi
 
 let runtime,server,base;const dir=mkdtempSync(path.join(tmpdir(),'rumbo-learning-'));
 before(async()=>{
- runtime=createApp({dataDir:dir,secure:false,tutor:async({key,messages,context})=>{assert.equal(key,'test-key-transient');assert.ok(Array.isArray(messages));return{reply:'Vamos a practicar.',correction:'Usa el pasado.',question:'¿Qué hiciste ayer?',focus:'Pasado',provider:'openai',model:'test'};}});
+ runtime=createApp({dataDir:dir,secure:false,aiConfig:{...testAIConfig,key:'test-key-transient'},tutor:async({key,messages,context})=>{assert.equal(key,'test-key-transient');assert.ok(Array.isArray(messages));return{reply:'Vamos a practicar.',correction:'Usa el pasado.',question:'¿Qué hiciste ayer?',focus:'Pasado',provider:'openai',model:'test'};}});
  server=await new Promise(resolve=>{const s=runtime.app.listen(0,'127.0.0.1',()=>resolve(s));});base='http://127.0.0.1:'+server.address().port;
 });
 after(async()=>{await new Promise(resolve=>server.close(resolve));runtime.db.close();rmSync(dir,{recursive:true,force:true});});
 async function req(route,body,cookie,method){const r=await fetch(base+'/api'+route,{method:method||(body===undefined?'GET':'POST'),headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(cookie?{Cookie:cookie}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
-async function account(name){return req('/auth/register',{name,email:name+'@example.test',password:'a-good-test-password',language:'pt-PT'});}
+async function account(name){const result=await req('/auth/register',{name,email:name+'@example.test',password:'a-good-test-password',language:'pt-PT'});grantPlan(runtime.db,result.data.user.id);return result;}
 test('plan saves and recalculates while protecting another user’s settings',async()=>{
  const a=await account('plan-a'),b=await account('plan-b');
  assert.equal((await req('/plan',undefined,undefined)).status,401);

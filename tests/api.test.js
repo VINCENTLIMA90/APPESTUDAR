@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import {grantPlan,testAIConfig} from './helpers.js';
 import { createApp } from '../server/app.js';
 import { questions, lessons } from '../server/content.js';
 
 let server, runtime, base;
 const dataDir = mkdtempSync(path.join(tmpdir(), 'rumbo-test-'));
 before(async () => {
-  runtime = createApp({ dataDir, secure: false, ai: async args => {
+  runtime = createApp({ dataDir, secure: false, aiConfig:testAIConfig, ai: async args => {
     assert.equal(args.key, 'test-key-never-store');
     return { summary: 'Resposta clara.', strengths: ['Boa estrutura'], improvements: ['Rever os verbos'], corrected: 'Hola, amigo.', nextStep: 'Praticar o passado.', provider: args.provider, model: 'test', evaluatedAt: new Date().toISOString() };
   } });
@@ -21,11 +22,11 @@ async function request(route, { body, method, cookie, headers = {} } = {}) {
   const response = await fetch(base + '/api' + route, { method: method || (body === undefined ? 'GET' : 'POST'), headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: response.status, data: response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.arrayBuffer(), cookie: response.headers.get('set-cookie')?.split(';')[0], headers: response.headers };
 }
-async function register(email = 'alice@example.test') { return request('/auth/register', { body: { name: 'Alice', email, password: 'a-strong-test-password', language: 'pt-PT' } }); }
+async function register(email = 'alice@example.test') {const result=await request('/auth/register', { body: { name: 'Alice', email, password: 'a-strong-test-password', language: 'pt-PT' } });grantPlan(runtime.db,result.data.user.id);return result;}
 test('catalog exposes lessons and tasks, without answer bank or solutions', async () => {
   const response = await request('/catalog');
   assert.equal(response.status, 200); assert.equal(response.data.lessons.length, lessons.length); assert.equal(response.data.languages.length, 7);
-  assert.equal(response.data.questions, undefined); assert.ok(response.data.tasks.speaking); assert.ok(response.data.tasks.writing);
+  assert.equal(response.data.questions, undefined); assert.deepEqual(response.data.tasks,{});
 });
 test('auth stores a salted password, restores sessions and rejects cross-site requests', async () => {
   const account = await register();
@@ -92,8 +93,8 @@ test('writing, audio and AI feedback persist, but API keys do not', async () => 
   const audio = await request('/submissions/' + submission.data.id + '/audio', { cookie: account.cookie });
   assert.equal(Buffer.from(audio.data).toString(), 'fake-audio-for-storage-test');
   assert.equal((await request('/submissions/' + submission.data.id + '/audio', { cookie: other.cookie })).status, 404);
-  assert.equal((await request('/submissions/' + submission.data.id + '/evaluate', { cookie: other.cookie, body: { provider: 'openai', key: 'test-key-never-store' } })).status, 404);
-  const evaluated = await request('/submissions/' + submission.data.id + '/evaluate', { cookie: account.cookie, body: { provider: 'openai', key: 'test-key-never-store' } });
+  assert.equal((await request('/submissions/' + submission.data.id + '/evaluate', { cookie: other.cookie, body: {consent:true} })).status, 404);
+  const evaluated = await request('/submissions/' + submission.data.id + '/evaluate', { cookie: account.cookie, body: {consent:true} });
   assert.equal(evaluated.status, 200); assert.equal(evaluated.data.summary, 'Resposta clara.');
   const progress = (await request('/progress', { cookie: account.cookie })).data;
   assert.equal(progress.submissions[0].feedback.provider, 'openai'); assert.ok(progress.submissions[0].audio_bytes > 0);

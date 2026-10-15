@@ -4,24 +4,19 @@ import { useApp } from './App';
 import { locales } from './i18n';
 import { api } from './api';
 
-export function AISettings() {
-  const { t, ai, setAI, catalog } = useApp();
-  const [key, setKey] = useState('');
-  const [provider, setProvider] = useState(ai.provider);
-  return <section className="settings-card"><div className="settings-heading"><span className="large-icon"><Sparkles size={24} /></span><div><h2>{t('ai')}</h2><p>{t('aiDesc')}</p></div></div><form onSubmit={e => { e.preventDefault(); setAI({ provider, key }); setKey(''); }}><label>API<select value={provider} onChange={e => setProvider(e.target.value)}>{catalog.providers.map(p => <option value={p.id} key={p.id}>{p.label} · {p.model}</option>)}</select></label><label>{t('apiKey')}<input type="password" autoComplete="off" spellCheck="false" value={key} onChange={e => setKey(e.target.value)} minLength={10} maxLength={1024} required placeholder="••••••••••••••••" /></label><div className="settings-actions"><button className="button primary" type="submit"><KeyRound size={16} />{t('save')}</button>{ai.key && <><span className="status success"><CheckCircle2 size={15} />{catalog.providers.find(p => p.id === ai.provider)?.label} · {t('connected')}</span><button className="text-button" type="button" onClick={() => { setAI({ provider, key: '' }); setKey(''); }}>{t('disconnect')}</button></>}</div></form></section>;
-}
+import {AIUsage} from './Access';
 export function SettingsPage() {
-  const { t, lang, user, changeLanguage, requireUser, notify } = useApp();
+  const { t, lang, user, changeLanguage, requireUser, notify, module, access } = useApp();
   const [deleting, setDeleting] = useState(false);
   async function removeAccount() {
     if (!window.confirm(t('deleteConfirm'))) return;
     setDeleting(true);
     try { await api('/me', {}, 'DELETE'); window.location.reload(); } catch (e) { notify(t(e.message), true); setDeleting(false); }
   }
-  return <><div className="page-heading"><div><h1>{t('settings')}</h1><p>{t('authBody')}</p></div></div><section className="settings-card"><div className="settings-heading"><span className="large-icon"><Globe2 size={24} /></span><div><h2>{t('language')}</h2><p>{t('spanishContent')}</p></div></div><select aria-label={t('language')} value={lang} onChange={e => changeLanguage(e.target.value)}>{Object.entries(locales).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></section><AISettings /><section className="settings-card"><div className="settings-heading"><span className="large-icon"><ShieldCheck size={24} /></span><div><h2>{user ? user.name : t('register')}</h2>{user && <p>{user.email}</p>}</div></div><p className="muted">{t('privacy')}</p><div className="settings-actions">{user ? <><a className="button outline" href="/api/export" download><Download size={17} />{t('export')}</a><button className="button danger" disabled={deleting} onClick={removeAccount}><Trash2 size={16} />{t('deleteAccount')}</button></> : <button className="button primary" onClick={() => requireUser(() => {})}>{t('register')}</button>}</div></section></>;
+  return <><div className="page-heading"><div><h1>{t('settings')}</h1><p>{t('authBody')}</p></div></div><section className="settings-card"><div className="settings-heading"><span className="large-icon"><Globe2 size={24} /></span><div><h2>{t('language')}</h2><p>{t('spanishContent')}</p></div></div><select aria-label={t('language')} value={lang} onChange={e => changeLanguage(e.target.value)}>{Object.entries(locales).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></section><AIUsage module={module}/>{user&&!user.email_verified_at&&<section className="settings-card"><h2>{t('verifyEmail')}</h2><p>{t('emailVerificationHelp')}</p><button className="button outline" disabled={!access?.emailAvailable} onClick={async()=>{await api('/auth/request-verification',{});notify(t('email_request_received'));}}>{t('resendVerification')}</button>{!access?.emailAvailable&&<p>{t('emailUnavailable')}</p>}</section>}<section className="settings-card"><div className="settings-heading"><span className="large-icon"><ShieldCheck size={24} /></span><div><h2>{user ? user.name : t('register')}</h2>{user && <p>{user.email}</p>}</div></div><p className="muted">{t('privacy')}</p><div className="settings-actions">{user ? <><a className="button outline" href="/api/export" download><Download size={17} />{t('export')}</a><button className="button danger" disabled={deleting} onClick={removeAccount}><Trash2 size={16} />{t('deleteAccount')}</button></> : <button className="button primary" onClick={() => requireUser(() => {})}>{t('register')}</button>}</div></section></>;
 }
 export function SourcesPage() {
-  const { t, lang, requireUser, notify } = useApp();
+  const { t, lang, requireUser, notify, module, access } = useApp();
   const [sources, setSources] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(false);
   async function load() { try { setSources((await api('/sources')).sources); setError(false); } catch { setError(true); } }
   useEffect(() => { load(); }, []);

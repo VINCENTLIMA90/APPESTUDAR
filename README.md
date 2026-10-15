@@ -1,97 +1,99 @@
 # Rumbo
 
-Webapp de preparação para os exames CCSE e DELE A2, com uma interface adaptada a computador e telemóvel. Demonstração: https://rumbo-demo.onrender.com/. Não é um produto do Instituto Cervantes.
+Webapp React + Vite + Express + SQLite para preparar CCSE e DELE A2. Interface em PT-PT, PT-BR, EN, FR, AR (RTL), DE e ES. Conteúdo pedagógico em espanhol. Demonstração: https://rumbo-demo.onrender.com/. Aplicação independente do Instituto Cervantes.
 
-## Executar
+## Executar e testar
 
-Requer Node.js 24 ou superior e npm. Não requer uma base de dados externa nem credenciais para os fluxos de estudo.
+Requer Node.js 24.19+ e npm.
 
 ```sh
-cd /workspace/APPESTUDAR
 npm ci --no-audit --no-fund
 npm run dev
 ```
 
-O Vite usa a porta 5173 e encaminha `/api` para o servidor na porta 3001. A app tem de ser aberta por um endereço HTTPS, ou localhost para desenvolvimento, para gravar áudio. O ambiente de onboarding não suporta links de pré-visualização locais; estas portas servem para execução e validação internas.
-
-Para servir a compilação, com interface e API no mesmo processo:
+Vite usa 5173 e a API 3001. Para servir a compilação:
 
 ```sh
 npm run build
 npm start
 ```
 
-`PORT` e `HOST` configuram a escuta do servidor (por omissão, 3001 e 0.0.0.0). `DATA_DIR` permite escolher um diretório persistente para a base de dados; por omissão, é `.data/` no repositório. Nunca publicar esta pasta nem copiá-la para um repositório Git.
-
-## O que está implementado
-
-- Dois módulos: CCSE e DELE A2, com 48 aulas (24 de cada) e 103 perguntas originais de prática em espanhol, fontes de referência e exercícios de consolidação. As novas aulas incluem atividades e respostas de exemplo.
-- Duas aulas gratuitas por módulo, catálogo por área de estudo e controlo de acesso às restantes no servidor. Subscrições mensais preparadas: CCSE 15 €, DELE A2 15 €, ambos 20 €. Checkout e gestão no Stripe implementados; cobrança desativada até ligar a conta e validar armazenamento permanente. Ver [BILLING.md](BILLING.md).
-- Interface em PT-PT, PT-BR, inglês, francês, árabe (RTL), alemão e espanhol. Os conteúdos pedagógicos estão em espanhol, a língua dos exames; as explicações de correção da IA seguem o idioma da conta.
-- Registo e início de sessão com palavras-passe protegidas por scrypt, cookies HttpOnly e sessões no servidor. Não há contas ou palavras-passe predefinidas.
-- Progresso por utilizador, aulas concluídas, resultados, dias de atividade, histórico e revisão dos erros até serem respondidos corretamente.
-- Avaliação inicial em três etapas: 12 perguntas objetivas (leitura, áudio e conhecimentos cívicos), escrita e expressão oral. Não atribui um nível MCER certificado nem uma classificação oficial DELE.
-- Prática CCSE e simulado de 25 perguntas em 45 minutos com exercícios próprios, distribuídos por cinco tarefas (10 + 3 + 2 + 3 + 7), incluindo três perguntas de verdadeiro/falso. Não inclui o banco oficial completo.
-- Prática DELE reduzida de leitura e áudio, além de escrita e oralidade em separado. O teste reduzido de 16 perguntas/35 minutos **não reproduz o exame oficial completo**.
-- Percurso completo guiado pelo modelo oficial DELE: 25 itens de leitura/60 min, 25 de audição/40 min, duas tarefas escritas/45 min, preparação oral/12 min e três tarefas orais/12 min. Os PDFs, fotografias e áudios naturais abrem diretamente nas fontes oficiais; as respostas ficam na app. O percurso pode ser retomado, mas os temporizadores continuam a contar.
-- Áudio de compreensão gerado pela síntese de voz do navegador, com transcrição acessível. Depende de uma voz espanhola disponível no dispositivo; se a síntese não funcionar, aparece a transcrição. Não se trata dos áudios oficiais.
-- Gravação de resposta oral até três minutos na prática livre e quatro por tarefa no percurso completo, reprodução, armazenamento e consulta posterior. Microfone real depende do dispositivo e da autorização do utilizador.
-- Respostas modelo e grelhas de autoavaliação, separadas dos resultados objetivos e dos comentários da IA.
-- Exportação dos dados e eliminação de conta, resultados e gravações.
-- Plano de estudo com frequência e duração das sessões, objetivo CCSE/DELE/ambos e uma janela de preparação sugerida a partir da avaliação e do desempenho recente. A previsão é provisória até concluir a avaliação e não equivale a uma data de exame ou certificação.
-- Revisão espaçada de perguntas e 30 cartões de vocabulário, com intervalos ajustados pela dificuldade recordada.
-- Mapa de competências, evidência limitada quando a amostra é pequena e marcos de atividade. Escrita e oralidade mantêm evidência qualitativa, sem uma percentagem de proficiência inventada.
-- Tutor de espanhol com conversas, explicações de erros e exercícios dirigidos por IA, usando os erros recentes como contexto.
-
-## Correção por IA: API pessoal
-
-Nas Definições, o utilizador escolhe OpenAI, Claude ou Gemini e introduz a sua própria chave de API. A subscrição do ChatGPT, Claude ou Gemini não equivale a acesso à API; esta versão não implementa login OAuth com esses serviços. A chave permanece apenas na memória do cliente durante a sessão, passa pelo servidor para a chamada e não é gravada em SQLite, localStorage, cookies ou logs.
-
-A correção é sempre solicitada explicitamente, com consentimento para enviar a resposta/gravação ao fornecedor e consumir créditos da API. A resposta do fornecedor fica guardada no histórico. Os modelos configurados são `gpt-4.1-mini`, `claude-sonnet-4-6` e `gemini-2.5-flash`; o acesso depende da conta de cada fornecedor.
-
-- OpenAI: escrita; transcrição da gravação com `gpt-4o-mini-transcribe`, seguida de comentários sobre o texto. Não avalia a pronúncia a partir da transcrição.
-- Claude: escrita e comentários sobre uma transcrição introduzida pelo utilizador. Não aceita o ficheiro áudio neste fluxo.
-- Gemini: escrita ou gravação enviada como áudio. Comentários orientativos, sem pontuação normalizada de pronúncia.
-
-Os testes da integração usam respostas simuladas e verificam os protocolos dos três fornecedores. Não foi executada uma correção real com uma chave paga; a qualidade e o acesso aos modelos ainda precisam dessa validação.
-
-O tutor exige consentimento e uma ação explícita em cada envio. As conversas ficam guardadas na conta e são incluídas na exportação. Os comentários sobre escrita/oralidade podem incluir exercícios baseados nos erros identificados. A chave de API continua apenas na memória da sessão. Consulte [CONTENT.md](CONTENT.md) para as fontes, datas e limites do plano e das avaliações.
-
-## Materiais oficiais e atualização
-
-Fontes usadas:
-
-- [CCSE: preparar a prova](https://examenes.cervantes.es/es/ccse/preparar-prueba)
-- [CCSE: informação](https://examenes.cervantes.es/es/ccse/que-es)
-- [CCSE: estrutura da prova](https://examenes.cervantes.es/es/ccse/como)
-- [DELE: preparar a prova](https://examenes.cervantes.es/es/dele/preparar-prueba)
-- [DELE A2: estrutura e documentos](https://examenes.cervantes.es/es/dele/examenes/a2)
-
-O servidor consulta as três fontes de materiais ao arrancar e a cada 24 horas enquanto está ativo. Extrai links de documentos do domínio oficial, filtra os materiais DELE para A2, guarda a última consulta bem-sucedida e atualiza automaticamente a lista de downloads. Uma alteração nos links sinaliza revisão necessária. Falhas ficam visíveis, preservando os últimos dados válidos. A verificação manual tem um intervalo mínimo de uma hora para evitar consultas excessivas.
-
-Esta monitorização não constitui uma atualização automática do banco de perguntas nem valida que um PDF novo se aplica a determinada data de exame. Uma alteração no conteúdo de um PDF que mantenha o mesmo link também não é detetada. Antes de comercializar, a incorporação de materiais oficiais e a revisão das edições terão de ser tratadas como um fluxo editorial, com as respetivas condições de utilização. A app não redistribui PDFs nem questões oficiais; apresenta links e exercícios próprios.
-
-Exceção específica para o percurso guiado: as duas claves oficiais A2 são verificadas por SHA-256, mesmo mantendo o mesmo link. Uma mudança suspende a correção do modelo até revisão. Falhas de rede são apresentadas separadamente e não são tratadas como uma versão nova. As respostas objetivas guardam a referência à clave consultada; escrita e oralidade não recebem uma nota oficial.
-
-Na configuração atual foi possível consultar as páginas oficiais DELE e a informação geral CCSE. A página CCSE de preparação devolveu uma resposta interrompida; a sua edição atual não foi confirmada. O estado na aplicação reflete a verificação real do servidor, sem marcar a fonte como atualizada quando falha.
-
-O DELE A2 oficial, conforme a página consultada, tem leitura (60 min, 25 itens), compreensão auditiva (40 min, 25 itens), escrita (45 min, 2 tarefas) e oral (12 min, mais 12 min de preparação, 3 tarefas). A prática própria é intencionalmente reduzida e está identificada na interface.
-
-## Testar
+O ambiente de onboarding não oferece pré-visualizações públicas de localhost; as portas locais servem para validação interna. Microfone requer HTTPS ou um contexto local seguro.
 
 ```sh
 npm test
 npm run test:e2e
 ```
 
-Os testes de API verificam autenticação, isolamento entre utilizadores, correção no servidor, revisão espaçada, previsão do plano, percurso DELE, gravações, tutor, feedback, exportação e eliminação. A integração Stripe usa respostas simuladas para verificar preços, assinaturas de webhooks, repetição de eventos, cancelamento, expiração e isolamento de módulos. Os testes de fontes usam respostas controladas para verificar alterações e falhas. Os testes de navegador verificam também os planos mensais, o bloqueio das aulas e os sete idiomas em layout móvel RTL.
+Playwright usa `/usr/bin/chromium` ou `CHROMIUM_PATH`, porta 4173 e dados isolados em `/tmp/rumbo-e2e`. Os testes de IA, email e Stripe usam fornecedores simulados. As permissões de microfone usam um dispositivo simulado. Não houve compras reais nem chamadas pagas a IA ou voz.
 
-O Playwright utiliza `/usr/bin/chromium` se existir; `CHROMIUM_PATH` permite outra instalação. Caso contrário, requer uma instalação de Chromium compatível com o Playwright. Os testes usam a porta 4173 e uma base SQLite separada em `/tmp/rumbo-e2e`, sem alterar os dados da aplicação. Os testes do microfone usam um dispositivo simulado e não comprovam a qualidade de gravação no telemóvel do utilizador.
+## Acesso e módulos
 
-## Dados e publicação futura
+O catálogo tem 48 aulas próprias, 24 de cada módulo, e 103 perguntas próprias de prática. Não inclui o banco oficial CCSE completo nem copia/adapta questões do manual oficial. A incorporação desse banco aguarda decisão jurídica.
 
-SQLite guarda as contas, sessões, respostas e gravações. Deve existir um volume persistente com cópias de segurança para manter os dados entre substituições do servidor. A sincronização entre dispositivos funciona quando ambos acedem à mesma instância da webapp.
+| Recurso | Conta gratuita | Subscrição ativa |
+| --- | --- | --- |
+| Aulas | c1, c2, d1, d2 | Todas do módulo adquirido |
+| Avaliação inicial | Completa: perguntas, escrita e oralidade | Completa |
+| Simulados | 1 CCSE completo e 1 DELE reduzido por conta | Ilimitados no módulo adquirido |
+| Prática, revisão, plano | Bloqueados | Incluídos no módulo adquirido |
+| Percurso completo DELE | Bloqueado | DELE A2 ou conjunto |
+| Tutor e correção IA | Bloqueados | Conforme quotas abaixo |
 
-Para distribuição comercial será necessário armazenamento permanente com cópias de segurança, executar com `NODE_ENV=production` (cookies Secure) atrás de um proxy que preserve o host, configurar Stripe e validar faturação. Recuperação de palavra-passe e verificação de email ainda não estão implementadas. A demonstração está no Render; as cobranças reais continuam desativadas.
+A tentativa gratuita é consumida ao **iniciar** o simulado, mesmo que seja abandonado. Iniciar sessão ou voltar a publicar não deve repor esse direito: exige conservar a base de dados. A API devolve 402 para recursos sem acesso e 401 quando falta sessão. O catálogo público entrega apenas metadados; as quatro aulas gratuitas também requerem conta.
 
-Destinos de rede necessários: `registry.npmjs.org` para instalar, `examenes.cervantes.es` para fontes, `api.openai.com`, `api.anthropic.com` e `generativelanguage.googleapis.com` para IA. A integração de pagamentos requer `api.stripe.com` no servidor. As fontes tipográficas são servidas localmente. As chaves pessoais são configuradas na aplicação, nunca no código nem no chat.
+Preços mensais com IVA incluído: CCSE 15 €, DELE A2 15 €, ambos 20 €. Pagamentos continuam desativados até configurar Stripe, email verificado, termos revistos e armazenamento permanente. Consultar [BILLING.md](BILLING.md) e [DEPLOY.md](DEPLOY.md).
+
+## IA incluída
+
+A IA usa exclusivamente configuração do servidor: `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` e `AI_TRANSCRIBE_MODEL`. Não há escolha de fornecedor/modelo nem introdução de chaves na interface. Os modelos não têm nomes fixos no código. Sem configuração, a interface apresenta disponibilidade temporariamente suspensa e não consome quotas.
+
+| Plano | Correções de escrita/oral por ciclo | Mensagens de tutor por ciclo |
+| --- | ---: | ---: |
+| Gratuito | 0 | 0 |
+| CCSE | 0 | 50 |
+| DELE A2 | 30 | 300 |
+| Conjunto | 30 | 300 |
+
+As quotas são configuráveis e contadas no servidor por utilizador/ciclo da subscrição Stripe. Pedidos em curso reservam quota, sucessos são contados e falhas libertam a reserva. Reservas interrompidas expiram após dez minutos. Consultar uma correção já guardada não gasta outra correção. A interface mostra o saldo e a data de renovação. Cada envio de texto/gravação exige consentimento explícito.
+
+Fornecedores suportados: OpenAI, Anthropic e Gemini. OpenAI transcreve oralidade com `AI_TRANSCRIBE_MODEL`; Gemini aceita áudio; Anthropic requer resposta escrita/transcrição. A correção é orientativa e não certifica nível nem nota oficial de pronúncia. O tutor respeita o módulo subscrito. Consulte todas as variáveis em [ENVIRONMENT.md](ENVIRONMENT.md).
+
+## Conta e email
+
+Palavras-passe protegidas por scrypt e sessões HttpOnly/SameSite. `MAX_SESSIONS_PER_USER=1` por omissão: um novo início de sessão termina a sessão ativa mais antiga e o dispositivo anterior recebe a mensagem correspondente. O esquema inclui `device_id` e um mecanismo de tokens com finalidade; não implementa códigos por email em dispositivo novo.
+
+Recuperação e verificação de email usam tokens aleatórios, guardados só por hash, de uso único e com validade de 60 minutos. A recuperação responde sempre da mesma forma, exista ou não a conta. Alterar a palavra-passe invalida todas as sessões. O email tem de estar verificado para iniciar uma subscrição.
+
+Configurar Resend ou Postmark através de `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` e a URL canónica `APP_URL`. Em desenvolvimento (`NODE_ENV=development`), sem serviço, o link aparece apenas nos logs locais. **Nunca é registado em produção**. Sem serviço em produção, o registo continua possível, mas verificação e recuperação dependem da configuração do email.
+
+## Áudio pré-gerado
+
+Os exercícios auditivos usam MP3 estáticos de `/audio/<id>.mp3`. Se faltar um ficheiro, mostram a transcrição; não recorrem à síntese de voz do navegador. O modelo oficial DELE mantém os áudios naturais ligados ao Instituto Cervantes. A leitura opcional de mensagens dinâmicas do tutor continua identificada como voz sintética e é distinta dos exercícios auditivos.
+
+O script `scripts/generate-audio.js` suporta vozes neurais Azure Speech, alternando as vozes configuradas de Espanha e América Latina. Não foi executado com chaves reais. Foi validado um plano de **16 ficheiros** em modo seco:
+
+```sh
+TTS_VOICES='[{"locale":"es-ES","name":"es-ES-ElviraNeural"},{"locale":"es-MX","name":"es-MX-DaliaNeural"}]' node --use-env-proxy scripts/generate-audio.js --dry-run
+```
+
+Para gerar efetivamente, configurar as variáveis TTS de [ENVIRONMENT.md](ENVIRONMENT.md) e executar:
+
+```sh
+node --use-env-proxy scripts/generate-audio.js
+npm run build
+```
+
+Os MP3 são escritos em `public/audio/`, copiados pelo Vite e servidos como estáticos. Incluir os artefactos gerados na publicação escolhida. Não colocar a chave de voz no repositório.
+
+## Estudo, fontes e limites
+
+Plano de estudo com frequência, objetivo e data escolhida; janela de preparação heurística, sem garantia de aprovação. Revisão espaçada, 30 cartões de vocabulário, histórico, gravações e exportação. Percurso completo DELE guiado por documentos oficiais com temporizadores e correção objetiva datada. Os ficheiros oficiais não são redistribuídos.
+
+O monitor verifica links oficiais e as claves do modelo no arranque e diariamente. Alterações sinalizam revisão; falhas de rede não são interpretadas como uma edição nova. A monitorização não atualiza automaticamente o banco de perguntas. [CONTENT.md](CONTENT.md) documenta as fontes e limitações.
+
+SQLite guarda os dados em `DATA_DIR`; as migrações são aditivas. Não substituir dados reais por fixtures de testes. O Render gratuito mantém dados temporários: não foi contratado nem alterado alojamento. Antes de ativar pagamentos é obrigatório armazenamento permanente, cópias de segurança e teste de recuperação.
+
+## Textos legais
+
+Termos, privacidade e cancelamento/desistência existem como estrutura, claramente marcados **[A REVER POR JURISTA]**, com ligações no rodapé e no registo. O checkout exige no servidor a aceitação dos termos e o pedido de início imediato do acesso digital; regista a versão provisória e a data. A validação jurídica e fiscal continua pendente, incluindo a redação final sobre desistência.

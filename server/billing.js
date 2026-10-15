@@ -1,5 +1,5 @@
 import express from 'express';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 
 export const plans = [
   {id:'ccse',modules:['ccse'],amount:1500,currency:'EUR',interval:'month'},
@@ -25,6 +25,8 @@ export function installBilling(app,db,{requireUser,config=billingConfig(),reques
     CREATE TABLE IF NOT EXISTS subscriptions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,customer_id TEXT NOT NULL,plan TEXT,status TEXT NOT NULL,paid_until INTEGER NOT NULL DEFAULT 0,cancel_at_period_end INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS billing_events(id TEXT PRIMARY KEY,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS billing_checkouts(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,session_id TEXT NOT NULL,plan TEXT NOT NULL,url TEXT NOT NULL);`);
+  if(!db.prepare('PRAGMA table_info(subscriptions)').all().some(c=>c.name==='period_start'))db.exec('ALTER TABLE subscriptions ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0');
+  db.exec(`CREATE TABLE IF NOT EXISTS checkout_consents(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,version TEXT NOT NULL,accepted_at TEXT NOT NULL);`);
   const priceMap=config.prices || {};
   let origin='';
   try {const parsed=new URL(config.origin);if(parsed.protocol==='https:'&&!parsed.username&&!parsed.password&&parsed.pathname==='/')origin=parsed.origin;}catch{/* missing configuration */}
@@ -41,11 +43,11 @@ export function installBilling(app,db,{requireUser,config=billingConfig(),reques
     const modules=[...new Set(subscriptions.filter(entitled).flatMap(row=>plans.find(p=>p.id===row.plan).modules))];
     return {plans,checkoutAvailable:configured,modules,subscriptions:subscriptions.map(({id,plan,status,paid_until,cancel_at_period_end})=>({id,plan,status,paidUntil:paid_until?new Date(paid_until*1000).toISOString():null,cancelAtPeriodEnd:Boolean(cancel_at_period_end)})),hasCustomer:Boolean(userId&&db.prepare('SELECT 1 FROM billing_customers WHERE user_id=?').get(userId))};
   }
-  function canAccess(userId,lesson){return lesson.free||Boolean(userId&&summary(userId).modules.includes(lesson.module));}
-  function catalog(lessons,userId){const modules=summary(userId).modules;return lessons.map(({id,module,category,minutes,title,intro,icon,position,free})=>({id,module,category,minutes,title,intro,icon,position,free,locked:!free&&!modules.includes(module)}));}
+  function canAccess(userId,lesson){return Boolean(userId)&&(lesson.free||summary(userId).modules.includes(lesson.module));}
+  function catalog(lessons,userId){const modules=summary(userId).modules;return lessons.map(({id,module,category,minutes,title,intro,icon,position,free})=>({id,module,category,minutes,title,intro,icon,position,free,locked:!userId||(!free&&!modules.includes(module))}));}
   async function validatePrice(plan){
     const price=await stripe('/prices/'+encodeURIComponent(priceMap[plan.id]));
-    if(!price.active||price.unit_amount!==plan.amount||price.currency!=='eur'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1||price.recurring?.usage_type!=='licensed')throw new Error('billing_price_mismatch');
+    if(price.tax_behavior!=='inclusive'||!price.active||price.unit_amount!==plan.amount||price.currency!=='eur'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1||price.recurring?.usage_type!=='licensed')throw new Error('billing_price_mismatch');
   }
   const syncing=new Map();
   async function syncSubscription(subscriptionId){
@@ -64,9 +66,10 @@ export function installBilling(app,db,{requireUser,config=billingConfig(),reques
     const item=items.length===1?items[0]:null;
     const price=typeof item?.price==='object'?item.price:null;
     const plan=plans.find(p=>priceMap[p.id]===price?.id);
-    const valid=plan&&price.unit_amount===plan.amount&&price.currency==='eur'&&price.recurring?.interval==='month'&&price.recurring?.interval_count===1&&item.quantity===1;
+    const valid=plan&&price.tax_behavior==='inclusive'&&price.unit_amount===plan.amount&&price.currency==='eur'&&price.recurring?.interval==='month'&&price.recurring?.interval_count===1&&item.quantity===1;
     const until=Number(item?.current_period_end || subscription.current_period_end || 0);
-    db.prepare(`INSERT INTO subscriptions VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET plan=excluded.plan,status=excluded.status,paid_until=excluded.paid_until,cancel_at_period_end=excluded.cancel_at_period_end,updated_at=excluded.updated_at`).run(subscription.id,account.user_id,customer,valid?plan.id:null,valid?subscription.status:'invalid',Number.isFinite(until)?until:0,subscription.cancel_at_period_end?1:0,new Date().toISOString());
+    db.prepare(`INSERT INTO subscriptions(id,user_id,customer_id,plan,status,paid_until,cancel_at_period_end,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET plan=excluded.plan,status=excluded.status,paid_until=excluded.paid_until,cancel_at_period_end=excluded.cancel_at_period_end,updated_at=excluded.updated_at`).run(subscription.id,account.user_id,customer,valid?plan.id:null,valid?subscription.status:'invalid',Number.isFinite(until)?until:0,subscription.cancel_at_period_end?1:0,new Date().toISOString());
+    db.prepare('UPDATE subscriptions SET period_start=? WHERE id=?').run(Number(item?.current_period_start||subscription.current_period_start||0),subscription.id);
   }
   // Register before the global JSON parser and browser-only CSRF middleware.
   app.post('/api/billing/webhook',express.raw({type:'application/json',limit:'256kb'}),async(req,res)=>{
@@ -89,7 +92,10 @@ export function installBilling(app,db,{requireUser,config=billingConfig(),reques
     app.post('/api/billing/checkout',requireUser,async(req,res)=>{
       const plan=plans.find(p=>p.id===req.body.plan);
       if(!plan)return res.status(400).json({error:'invalid_plan'});
+      if(!req.user.email_verified_at)return res.status(403).json({error:'email_verification_required'});
+      if(req.body.termsAccepted!==true||req.body.immediateAccess!==true)return res.status(400).json({error:'checkout_consent_required'});
       if(!configured)return res.status(503).json({error:'billing_not_ready'});
+      db.prepare('INSERT INTO checkout_consents VALUES (?,?,?,?)').run(randomUUID(),req.user.id,'draft-2026-10-15',new Date().toISOString());
       if(busy.has(req.user.id))return res.status(409).json({error:'billing_busy'});
       busy.add(req.user.id);
       try{

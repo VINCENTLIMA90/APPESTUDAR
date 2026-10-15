@@ -1,22 +1,20 @@
 import express from 'express';
 import { DatabaseSync } from 'node:sqlite';
-import { scrypt, randomBytes, randomInt, timingSafeEqual, createHash } from 'node:crypto';
-import { promisify } from 'node:util';
+import { randomBytes, randomInt } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { lessons, questions, tasks, languages, officialSources } from './content.js';
-import { evaluateAI, providers } from './ai.js';
+import { evaluateAI } from './ai.js';
 import { extractMaterials, materialFingerprint } from './sources.js';
 import { installLearning, skillSummary, studyDate } from './learning.js';
 import { installExams, examTasks, model } from './exam.js';
 import { installTutor } from './tutor.js';
 import { installBilling } from './billing.js';
+import {installAccess} from './access.js';
+import {installAccounts} from './accounts.js';
 const allTasks = Object.fromEntries(Object.entries({ ...tasks, ...examTasks }).map(([id, task]) => [id, { ...task, kind: task.kind || id }]));
 
-const hashPassword = promisify(scrypt);
-const digest = token => createHash('sha256').update(token).digest('hex');
-const dateKey = date => new Date(date).toISOString().slice(0, 10);
-export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, tutor, sourceFetch = fetch, billingConfig, billingFetch } = {}) {
+export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, tutor, sourceFetch = fetch, billingConfig, billingFetch, aiConfig, emailConfig, emailSend, logger, clock } = {}) {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path.join(dataDir, 'rumbo.sqlite'));
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
@@ -31,6 +29,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   for (const source of officialSources) db.prepare('INSERT OR IGNORE INTO sources(id) VALUES (?)').run(source.id);
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy',1);
   const billing = installBilling(app,db,{requireUser,...(billingConfig?{config:billingConfig}:{}),...(billingFetch?{requester:billingFetch}:{})});
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
@@ -58,58 +57,22 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     if (bucket.count > 30) return res.status(429).json({ error: 'rate_limit' });
     next();
   }
-  app.use((req, res, next) => {
-    const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('rumbo_session='))?.slice(14);
-    if (token && /^[a-f0-9]{64}$/.test(token)) req.user = db.prepare('SELECT u.id,u.name,u.email,u.language,u.created_at FROM users u JOIN sessions s ON u.id=s.user_id WHERE s.token=? AND s.expires>?').get(digest(token), Date.now());
-    next();
-  });
-  function requireUser(req, res, next) { if (!req.user) return res.status(401).json({ error: 'login_required' }); next(); }
+  const accounts=installAccounts(app,db,{secure,limit,languages,...(emailConfig?{config:emailConfig}:{}),...(emailSend?{send:emailSend}:{}),...(logger?{logger}:{}),...(clock?{clock}:{})});
+  function requireUser(req,res,next){if(!req.user)return res.status(401).json({error:req.sessionIssue||'login_required'});next();}
+  const access=installAccess(db,billing,{...(aiConfig?{config:aiConfig}:{}),...(clock?{clock}:{})});
   billing.routes();
-  const learning = installLearning(app, db, { requireUser, questions, lessons });
+  app.get('/api/access',requireUser,(req,res)=>res.json({...access.summary(req.user.id),emailAvailable:accounts.emailAvailable}));
+  app.use('/api/exams',requireUser,access.guard('dele'));
+  const learning = installLearning(app, db, { requireUser, questions, lessons, access });
   const exams = installExams(app, db, { requireUser, sourceFetch });
-  installTutor(app, db, { requireUser, ...(tutor ? { ai:tutor } : {}) });
-  function session(res, id) {
-    const token = randomBytes(32).toString('hex');
-    db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());
-    db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(digest(token), id, Date.now() + 30 * 86400000);
-    res.cookie('rumbo_session', token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 30 * 86400000, path: '/' });
-  }
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok', version:'0.3.0' }));
-  app.get('/api/catalog', (req, res) => res.json({ lessons:billing.catalog(lessons,req.user?.id), tasks: allTasks, model, languages, providers: Object.entries(providers).map(([id, p]) => ({ id, label: p.label, model: p.model })) }));
-  app.get('/api/lessons/:id',(req,res)=>{
+  installTutor(app, db, { requireUser, access, ...(tutor ? { ai:tutor } : {}) });
+  app.get('/api/health', (_req, res) => res.json({ status: 'ok', version:'0.4.0' }));
+  app.get('/api/catalog', (req, res) => res.json({ lessons:billing.catalog(lessons,req.user?.id), tasks:req.user?Object.fromEntries(Object.entries(allTasks).filter(([id])=>access.has(req.user.id,'dele')||['writing','speaking'].includes(id))):{}, model, languages,planLimits:access.config.limits }));
+  app.get('/api/lessons/:id',requireUser,(req,res)=>{
     const lesson=lessons.find(l=>l.id===req.params.id);
     if(!lesson)return res.status(404).json({error:'not_found'});
     if(!billing.canAccess(req.user?.id,lesson))return res.status(402).json({error:'subscription_required',module:lesson.module});
     res.json({lesson});
-  });
-  app.get('/api/me', (req, res) => res.json({ user: req.user || null }));
-  app.post('/api/auth/register', limit, async (req, res) => {
-    const { name, email, password, language } = req.body;
-    if (typeof name !== 'string' || !name.trim() || name.length > 70 || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || typeof password !== 'string' || password.length < 10 || password.length > 128) return res.status(400).json({ error: 'registration_invalid' });
-    const normalizedEmail = email.trim().toLowerCase();
-    if (db.prepare('SELECT id FROM users WHERE email=?').get(normalizedEmail)) return res.status(409).json({ error: 'email_exists' });
-    const salt = randomBytes(16).toString('hex');
-    const passwordHash = (await hashPassword(password, salt, 64)).toString('hex');
-    const id = randomBytes(16).toString('hex');
-    try { db.prepare('INSERT INTO users VALUES (?,?,?,?,?,?,?)').run(id, name.trim(), normalizedEmail, passwordHash, salt, languages.includes(language) ? language : 'pt-PT', new Date().toISOString()); }
-    catch (error) { if (error.code?.includes('CONSTRAINT')) return res.status(409).json({ error: 'email_exists' }); throw error; }
-    session(res, id);
-    res.status(201).json({ user: db.prepare('SELECT id,name,email,language,created_at FROM users WHERE id=?').get(id) });
-  });
-  app.post('/api/auth/login', limit, async (req, res) => {
-    const { email, password } = req.body;
-    if (typeof email !== 'string' || typeof password !== 'string' || password.length > 128) return res.status(400).json({ error: 'credentials_invalid' });
-    const user = db.prepare('SELECT * FROM users WHERE email=?').get(email.trim().toLowerCase());
-    const candidate = await hashPassword(password, user?.salt || 'dummy-salt-for-timing', 64);
-    if (!user || !timingSafeEqual(candidate, Buffer.from(user.password, 'hex'))) return res.status(401).json({ error: 'credentials_invalid' });
-    session(res, user.id);
-    res.json({ user: { id: user.id, name: user.name, email: user.email, language: user.language, created_at: user.created_at } });
-  });
-  app.post('/api/auth/logout', (req, res) => {
-    const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('rumbo_session='))?.slice(14);
-    if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(digest(token));
-    res.clearCookie('rumbo_session', { path: '/', httpOnly: true, sameSite: 'lax', secure });
-    res.json({ ok: true });
   });
   app.patch('/api/me', requireUser, (req, res) => {
     if (!languages.includes(req.body.language)) return res.status(400).json({ error: 'invalid_language' });
@@ -140,6 +103,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   app.post('/api/quizzes', requireUser, (req, res) => {
     const { module, mode } = req.body;
     if (!['ccse', 'dele'].includes(module) || !['practice', 'simulation', 'assessment', 'review'].includes(mode)) return res.status(400).json({ error: 'invalid_quiz' });
+    if(mode!=='assessment'&&mode!=='simulation'&&!access.has(req.user.id,module))return res.status(402).json({error:'subscription_required',module});
     const shuffle = xs => { const items = [...xs]; for (let i = items.length - 1; i > 0; i--) { const j = randomInt(i + 1); [items[i], items[j]] = [items[j], items[i]]; } return items; };
     let pool = questions.filter(q => q.module === module);
     if (mode === 'review') {
@@ -159,13 +123,19 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     else if (module === 'dele' && mode === 'simulation') selected = ['reading', 'listening'].flatMap(c => shuffle(pool.filter(q => q.category === c)).slice(0, 8));
     else selected = shuffle(pool).slice(0, 10);
     const id = randomBytes(16).toString('hex');
-    db.prepare('INSERT INTO quizzes VALUES (?,?,?,?,?,?,NULL)').run(id, req.user.id, module, mode, JSON.stringify(selected.map(q => q.id)), new Date().toISOString());
-    res.status(201).json({ id, module, mode, minutes: mode === 'simulation' ? module === 'ccse' ? 45 : 35 : null, questions: selected.map(({ correct, explanation, ...q }) => q) });
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      if(mode==='simulation'&&!access.claimTrial(req.user.id,module,id)){db.exec('ROLLBACK');return res.status(402).json({error:'subscription_required',module});}
+      db.prepare('INSERT INTO quizzes VALUES (?,?,?,?,?,?,NULL)').run(id, req.user.id, module, mode, JSON.stringify(selected.map(q=>q.id)),new Date().toISOString());db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+    res.status(201).json({ id, module, mode,startedAt:new Date().toISOString(), minutes: mode === 'simulation' ? module === 'ccse' ? 45 : 35 : null, questions: selected.map(({correct,explanation,...q})=>({...q,...(q.audio?{audioSrc:'/audio/'+q.id+'.mp3'}:{})})) });
   });
   app.post('/api/quizzes/:id/submit', requireUser, (req, res) => {
     const quiz = db.prepare('SELECT * FROM quizzes WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
     if (!quiz) return res.status(404).json({ error: 'not_found' });
+    if(!access.quizAllowed(req.user.id,quiz))return res.status(402).json({error:'subscription_required',module:quiz.module});
     if (quiz.result) return res.json(JSON.parse(quiz.result));
+    if(quiz.mode==='simulation'&&Date.now()>Date.parse(quiz.created_at)+(quiz.module==='ccse'?45:35)*60000+10000)return res.status(410).json({error:'quiz_expired'});
     const ids = JSON.parse(quiz.question_ids);
     const answers = req.body.answers;
     if (!Array.isArray(answers) || answers.length !== ids.length || answers.some(a => a !== null && (!Number.isInteger(a) || a < 0 || a > 2))) return res.status(400).json({ error: 'invalid_answers' });
@@ -183,8 +153,9 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     res.json(result);
   });
   app.post('/api/submissions', requireUser, (req, res) => {
-    const { kind, text = '', audio, mime = '', rubric = [], task_id = kind, exam_id = null } = req.body;
+    const { kind, text = '', audio, mime = '', rubric = [], task_id = kind, exam_id = null, purpose='practice' } = req.body;
     if (!['writing','speaking'].includes(kind) || !allTasks[task_id] || allTasks[task_id].kind !== kind || typeof text !== 'string' || text.length > 12000 || !Array.isArray(rubric) || rubric.some(v => !Number.isInteger(v) || v < 0 || v > 3) || rubric.length > 4) return res.status(400).json({ error: 'invalid_submission' });
+    if(!access.has(req.user.id,'dele')&&!(purpose==='assessment'&&['writing','speaking'].includes(task_id)&&!exam_id))return res.status(402).json({error:'subscription_required',module:'dele'});
     let exam;
     if (exam_id) {
       exam = db.prepare('SELECT * FROM exam_attempts WHERE id=? AND user_id=?').get(exam_id, req.user.id);
@@ -206,16 +177,22 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   app.post('/api/submissions/:id/evaluate', requireUser, async (req, res) => {
     const row = db.prepare('SELECT * FROM submissions WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
     if (!row) return res.status(404).json({ error: 'not_found' });
-    if (row.feedback) return res.json(JSON.parse(row.feedback));
+    if (row.feedback) {if(!access.has(req.user.id,'dele'))return res.status(402).json({error:'subscription_required'});return res.json(JSON.parse(row.feedback));}
     if (aiBusy.has(req.user.id)) return res.status(429).json({ error: 'ai_busy' });
-    const { key, provider } = req.body;
-    if (!providers[provider] || typeof key !== 'string' || key.length < 10 || key.length > 1024) return res.status(400).json({ error: 'ai_key' });
+    if(!access.has(req.user.id,'dele'))return res.status(402).json({error:'subscription_required',module:'dele'});
+    if(req.body.consent!==true)return res.status(400).json({error:'consent_required'});
+    let reservation;try{reservation=access.reserve(req.user.id,'dele','corrections');}catch(error){return res.status(error.status||503).json({error:error.message,renewAt:error.renewAt});}
     aiBusy.add(req.user.id);
     try {
-      const feedback = await ai({ key, provider, kind: row.kind, text: row.text, audio: row.audio ? Buffer.from(row.audio).toString('base64') : null, mime: row.mime, language: req.user.language, task: (allTasks[row.task_id] || tasks[row.kind]).prompt });
-      db.prepare('UPDATE submissions SET feedback=? WHERE id=?').run(JSON.stringify(feedback), row.id);
+      const feedback = await ai({ ...access.config, kind: row.kind, text: row.text, audio: row.audio ? Buffer.from(row.audio).toString('base64') : null, mime: row.mime, language: req.user.language, task: (allTasks[row.task_id] || tasks[row.kind]).prompt });
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare('UPDATE submissions SET feedback=? WHERE id=?').run(JSON.stringify(feedback), row.id);
+        access.finish(reservation,true);
+        db.exec('COMMIT');
+      } catch(error) {db.exec('ROLLBACK');throw error;}
       res.json(feedback);
-    } catch (error) { res.status(502).json({ error: ['ai_auth', 'ai_quota', 'ai_text', 'ai_format', 'ai_upstream'].includes(error.message) ? error.message : 'ai_network' }); }
+    } catch (error) { access.finish(reservation,false);res.status(502).json({ error: ['ai_unavailable','ai_auth', 'ai_quota', 'ai_text', 'ai_format', 'ai_upstream'].includes(error.message) ? error.message : 'ai_network' }); }
     finally { aiBusy.delete(req.user.id); }
   });
   app.get('/api/export', requireUser, (req, res) => {

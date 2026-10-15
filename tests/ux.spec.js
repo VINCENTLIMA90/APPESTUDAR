@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {grantBrowserPlan} from './helpers.js';
 import {locales,translate} from '../src/i18n.js';
 
 async function register(page){
@@ -9,6 +10,7 @@ async function register(page){
   await dialog.getByLabel('Palavra-passe',{exact:true}).fill('test-password-123');
   await dialog.getByRole('button',{name:'Criar conta',exact:true}).click();
   await expect(dialog).toHaveCount(0);
+  await grantBrowserPlan(page);
   await expect(page.locator('.stats-grid')).toBeVisible();
 }
 test.afterEach(async({page})=>{await page.request.delete('/api/me',{data:{}});});

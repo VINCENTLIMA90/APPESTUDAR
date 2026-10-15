@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { app, checkSources } = createApp({ dataDir: process.env.DATA_DIR || path.join(root, '.data') });
+app.set('trust proxy',1);
+app.use('/audio',express.static(path.join(root,'public/audio')),(_req,res)=>res.status(404).end());
 if (existsSync(path.join(root, 'dist/index.html'))) {
   app.use(express.static(path.join(root, 'dist')));
   app.get('/{*path}', (_req, res) => res.sendFile(path.join(root, 'dist/index.html')));

@@ -18,7 +18,7 @@ async function fixture(t,overrides={}){
     assert.equal(parsed.origin,'https://api.stripe.com');
     if(state.fail)return new Response('{}',{status:503});
     let result;
-    if(route.startsWith('/prices/')){const id=route.split('/').at(-1);result={id,active:true,unit_amount:state.priceAmount??(id==='price_both'?2000:1500),currency:'eur',recurring:{interval:'month',interval_count:1,usage_type:'licensed'}};}
+    if(route.startsWith('/prices/')){const id=route.split('/').at(-1);result={id,active:true,unit_amount:state.priceAmount??(id==='price_both'?2000:1500),currency:'eur',tax_behavior:'inclusive',recurring:{interval:'month',interval_count:1,usage_type:'licensed'}};}
     else if(route==='/customers'&&method==='POST')result={id:'cus_'+state.requests.length};
     else if(route==='/subscriptions')result={data:[...state.subscriptions.values()].filter(s=>s.customer===parsed.searchParams.get('customer')),has_more:false};
     else if(route.startsWith('/subscriptions/')){result=state.subscriptions.get(route.split('/').at(-1));if(method==='DELETE')result.status='canceled';}
@@ -37,11 +37,11 @@ async function fixture(t,overrides={}){
     const response=await fetch(base+'/api'+route,{method:method||(body===undefined?'GET':'POST'),headers:{...(body===undefined?{}:{'content-type':'application/json'}),...(cookie?{cookie}:{}),...headers},...(body===undefined?{}:{body:typeof body==='string'?body:JSON.stringify(body)})});
     return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};
   }
-  async function account(email='learner@example.test'){const registered=await request('/auth/register',{body:{name:'Learner',email,password:'a-strong-test-password',language:'pt-PT'}});assert.equal(registered.status,201);return {id:registered.data.user.id,cookie:registered.cookie};}
+  async function account(email='learner@example.test'){const registered=await request('/auth/register',{body:{name:'Learner',email,password:'a-strong-test-password',language:'pt-PT'}});assert.equal(registered.status,201);runtime.db.prepare('UPDATE users SET email_verified_at=? WHERE id=?').run(new Date().toISOString(),registered.data.user.id);return {id:registered.data.user.id,cookie:registered.cookie};}
   function subscription(user,plan='ccse',status='active',until=Math.floor(Date.now()/1000)+86400){
     const customer='cus_'+user.id,id='sub_'+user.id;
     runtime.db.prepare('INSERT OR REPLACE INTO billing_customers VALUES (?,?)').run(user.id,customer);
-    const record={id,customer,status,cancel_at_period_end:false,items:{data:[{quantity:1,current_period_end:until,price:{id:configuration.prices[plan],unit_amount:plan==='both'?2000:1500,currency:'eur',recurring:{interval:'month',interval_count:1}}}]}};
+    const record={id,customer,status,cancel_at_period_end:false,items:{data:[{quantity:1,current_period_end:until,price:{id:configuration.prices[plan],unit_amount:plan==='both'?2000:1500,currency:'eur',tax_behavior:'inclusive',recurring:{interval:'month',interval_count:1}}}]}};
     state.subscriptions.set(id,record);return record;
   }
   async function webhook(object,type='customer.subscription.updated',id='evt_'+Math.random().toString(16).slice(2)){
@@ -59,8 +59,8 @@ test('48 lessons have seven titles; only c1, c2, d1 and d2 are free, and the cat
   assert.deepEqual(catalog.lessons.filter(l=>l.free).map(l=>l.id),['c1','c2','d1','d2']);
   for(const module of ['ccse','dele'])assert.equal(catalog.lessons.filter(l=>l.module===module).length,24);
   for(const lesson of catalog.lessons){assert.equal(Object.keys(lesson.title).length,7);for(const field of ['sections','takeaway','activity','checkpoints'])assert.equal(lesson[field],undefined);}
-  for(const id of ['c1','c2','d1','d2'])assert.equal((await request('/lessons/'+id)).status,200);
-  assert.equal((await request('/lessons/c3')).status,402);
+  for(const id of ['c1','c2','d1','d2'])assert.equal((await request('/lessons/'+id)).status,401);
+  assert.equal((await request('/lessons/c3')).status,401);
   const user=await account();
   assert.equal((await request('/lessons/c3/complete',{cookie:user.cookie,body:{paid:true,plan:'both'}})).status,402);
   assert.equal(runtime.db.prepare('SELECT COUNT(*) n FROM completions').get().n,0);
@@ -89,26 +89,26 @@ test('verified single-module and combined subscriptions enforce ownership, expir
 test('billing cannot start without persistent storage or enabled provider configuration',async t=>{
   const {request,account,state}=await fixture(t,{persistent:false});const user=await account();
   assert.equal((await request('/billing')).data.checkoutAvailable,false);
-  const response=await request('/billing/checkout',{cookie:user.cookie,body:{plan:'both'}});
+  const response=await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'both'}});
   assert.equal(response.status,503);assert.equal(response.data.error,'billing_not_ready');assert.equal(state.requests.length,0);
 });
 test('checkout uses fixed server prices, reuses pending sessions and expires a replaced session',async t=>{
   const {request,account,state}=await fixture(t);const user=await account();
-  const first=await request('/billing/checkout',{cookie:user.cookie,body:{plan:'both',amount:1,success_url:'https://evil.test'}});
+  const first=await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'both',amount:1,success_url:'https://evil.test'}});
   assert.equal(first.status,200);assert.match(first.data.url,/^https:\/\/checkout.stripe.com\//);
   const fields=state.requests.find(r=>r.route==='/checkout/sessions'&&r.method==='POST').fields;
   assert.equal(fields.get('line_items[0][price]'),'price_both');assert.equal(fields.get('mode'),'subscription');assert.equal(fields.get('success_url'),'https://study.example.test/?billing=success');
   assert.equal((await request('/lessons/c3',{cookie:user.cookie})).status,402);
-  const second=await request('/billing/checkout',{cookie:user.cookie,body:{plan:'both'}});assert.equal(second.data.url,first.data.url);
-  const changed=await request('/billing/checkout',{cookie:user.cookie,body:{plan:'dele'}});assert.equal(changed.status,200);assert.notEqual(changed.data.url,first.data.url);
+  const second=await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'both'}});assert.equal(second.data.url,first.data.url);
+  const changed=await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'dele'}});assert.equal(changed.status,200);assert.notEqual(changed.data.url,first.data.url);
   assert.equal([...state.sessions.values()].filter(s=>s.status==='open').length,1);
-  assert.equal((await request('/billing/checkout',{cookie:user.cookie,body:{plan:'invented'}})).status,400);
+  assert.equal((await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'invented'}})).status,400);
 });
 test('price mismatch and provider errors do not create checkout sessions',async t=>{
   const {request,account,state}=await fixture(t);const user=await account();state.priceAmount=9900;
-  const mismatch=await request('/billing/checkout',{cookie:user.cookie,body:{plan:'both'}});
+  const mismatch=await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'both'}});
   assert.equal(mismatch.status,503);assert.equal(mismatch.data.error,'billing_price_mismatch');assert.equal(state.sessions.size,0);
-  state.fail=true;assert.equal((await request('/billing/checkout',{cookie:user.cookie,body:{plan:'ccse'}})).status,503);assert.equal(state.sessions.size,0);
+  state.fail=true;assert.equal((await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'ccse'}})).status,503);assert.equal(state.sessions.size,0);
 });
 test('webhooks reject tampering and replays, are idempotent and retrieve the latest provider state',async t=>{
   const {request,account,subscription,webhook,state,runtime}=await fixture(t);const user=await account();const sub=subscription(user);
@@ -135,7 +135,7 @@ test('a failed webhook is retried and an existing subscription cannot be purchas
   assert.equal((await webhook(sub,'customer.subscription.created','evt_retry')).status,503);state.fail=false;
   assert.equal((await webhook(sub,'customer.subscription.created','evt_retry')).status,200);
   assert.equal((await request('/lessons/d3',{cookie:user.cookie})).status,200);
-  const duplicate=await request('/billing/checkout',{cookie:user.cookie,body:{plan:'both'}});assert.equal(duplicate.status,409);assert.equal(duplicate.data.error,'subscription_exists');
+  const duplicate=await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'both'}});assert.equal(duplicate.status,409);assert.equal(duplicate.data.error,'subscription_exists');
   assert.equal((await request('/billing/portal',{cookie:user.cookie,body:{}})).status,200);
 });
 test('account deletion cancels provider subscriptions; a provider failure preserves the account',async t=>{
@@ -145,7 +145,7 @@ test('account deletion cancels provider subscriptions; a provider failure preser
 });
 test('deleting an account expires its unpaid checkout before removing its data',async t=>{
   const {request,account,state}=await fixture(t);const user=await account();
-  assert.equal((await request('/billing/checkout',{cookie:user.cookie,body:{plan:'ccse'}})).status,200);
+  assert.equal((await request('/billing/checkout',{cookie:user.cookie,body:{termsAccepted:true,immediateAccess:true,plan:'ccse'}})).status,200);
   assert.equal((await request('/me',{cookie:user.cookie,method:'DELETE',body:{}})).status,200);
   assert.equal([...state.sessions.values()][0].status,'expired');
   const expiration=state.requests.findIndex(r=>r.route.endsWith('/expire'));
