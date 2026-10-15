@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import {lessons} from '../server/content.js';
 async function createAccount(page) {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Criar conta', exact: true }).click();
+  await page.locator('.auth-top').click();
   const modal = page.getByRole('dialog');
   await modal.getByLabel('Nome', { exact: true }).fill('Rita');
   await modal.getByLabel('Email', { exact: true }).fill(`rita-${Date.now()}@example.test`);
@@ -70,7 +70,7 @@ test('seven interface languages and mobile Arabic layout render without overflow
   for (const lang of ['pt-BR', 'en', 'fr', 'de', 'es', 'ar', 'pt-PT']) {
     await page.locator('.language-picker select').selectOption(lang);
     await expect(page.locator('html')).toHaveAttribute('lang', lang);
-    await expect(page.locator('.hero h2')).not.toBeEmpty();
+    await expect(page.locator('.welcome-hero h1')).not.toBeEmpty();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBeFalsy();
   }
   await page.setViewportSize({ width: 390, height: 844 });

@@ -10,6 +10,7 @@ import { PlanPage, ReviewPage } from './Learning';
 import { TutorPage } from './Tutor';
 import { FullExamPage } from './FullExam';
 import { PlansPage } from './Plans';
+import { Welcome } from './Welcome';
 
 const Context = createContext();
 export const useApp = () => useContext(Context);
@@ -26,7 +27,7 @@ export default function App() {
   const [toast, setToast] = useState(null), [bootError, setBootError] = useState(false), [ready, setReady] = useState(false);
   const [ai, setAI] = useState({ provider: 'openai', key: '' });
   const [tutorContext,setTutorContext]=useState('');
-  const t = key => translate(lang, key);
+  const t = (key,values) => translate(lang, key,values);
   const notify = useCallback((message, error = false) => setToast({ message, error, id: Date.now() }), []);
   const loadProgress = useCallback(async () => { const data = await api('/progress'); setProgress(data); return data; }, []);
   const loadCatalog = useCallback(async () => { const data = await api('/catalog'); setCatalog(data); return data; }, []);
@@ -73,14 +74,14 @@ export default function App() {
   }
   async function changeLanguage(value) { setLang(value); if (user) { try { await api('/me', { language: value }, 'PATCH'); } catch (error) { notify(t(error.message), true); } } }
   async function logout() { try { await api('/auth/logout', {}); setUser(null); setProgress(emptyProgress); setAI({ provider: 'openai', key: '' }); navigate('dashboard'); await loadCatalog(); } catch (error) { notify(t(error.message), true); } }
-  const context = { lang, t, user, catalog, progress, loadProgress, loadCatalog, notify, navigate, module, setModule, startQuiz, openSkill, openLesson, requireUser, ai, setAI, changeLanguage,askTutor,tutorContext };
+  const context = { lang, t, user, catalog, progress, loadProgress, loadCatalog, notify, navigate, module, setModule, startQuiz, openSkill, openLesson, requireUser, openAuth:setAuth, ai, setAI, changeLanguage,askTutor,tutorContext };
   let content;
   if (!ready) content = <div className="loading-state">{bootError ? <><p>{t('error')}</p><button className="button primary" onClick={boot}>{t('retry')}</button></> : <><span className="spinner" />{t('loading')}</>}</div>;
   else if (quiz) content = <Quiz quiz={quiz} onFinish={async data => { setResult(data); setQuiz(null); await loadProgress(); }} onExit={() => navigate('tests')} />;
   else if (result) content = <QuizResult result={result} onBack={() => setResult(null)} />;
   else if (skill) content = <SkillPractice key={skill.taskId} kind={skill.kind} taskId={skill.taskId} existing={skill.existing} onBack={() => setSkill(null)} />;
   else if (lesson) content = <LessonPage key={lesson.id} lesson={lesson} onBack={() => setLesson(null)} />;
-  else content = ({ dashboard: <Dashboard />, plan:<PlanPage/>,reviewHub:<ReviewPage/>,tutor:<TutorPage/>,fullExam:<FullExamPage/>,plans:<PlansPage selectedLesson={lockedLesson}/>, lessons: <Lessons />, tests: <TestsPage />, assessment: <AssessmentPage />, progress: <ProgressPage onResult={setResult} />, sources: <SourcesPage />, settings: <SettingsPage /> })[page];
+  else content = ({ dashboard: user?<Dashboard />:<Welcome/>, plan:<PlanPage/>,reviewHub:<ReviewPage/>,tutor:<TutorPage/>,fullExam:<FullExamPage/>,plans:<PlansPage selectedLesson={lockedLesson}/>, lessons: <Lessons />, tests: <TestsPage />, assessment: <AssessmentPage />, progress: <ProgressPage onResult={setResult} />, sources: <SourcesPage />, settings: <SettingsPage /> })[page];
   return <Context.Provider value={context}>
     <a href="#main" className="skip-link">{t('continue')}</a>
     {mobile && <div className="sidebar-overlay" onClick={() => setMobile(false)} />}
@@ -90,7 +91,7 @@ export default function App() {
       <button className="mobile-close icon-button" onClick={() => setMobile(false)} aria-label={t('close')}><X size={20} /></button>
       <div className="sidebar-label">{t('workspace')}</div>
       <nav aria-label={t('workspace')}>{navigation.map(([id, Icon]) => <button key={id} onClick={() => navigate(id)} className={'nav-item ' + (page === id || (page==='fullExam'&&id==='tests') ? 'active' : '')} aria-current={page === id ? 'page' : undefined}><Icon size={19} strokeWidth={1.7} /><span>{t(id)}</span>{id === 'assessment' && <span className="nav-dot" />}</button>)}</nav>
-      <div className="sidebar-note"><span className="note-spark"><Sparkles size={19} /></span><strong>{t('studyPlan')}</strong><p>{t('quote')}</p><div className="note-line" /></div>
+      <div className="sidebar-note"><span className="note-spark"><Sparkles size={19} /></span><strong>{t('startAtYourPace')}</strong><p>{t('quote')}</p><div className="note-line" /></div>
       <div className="sidebar-bottom"><button className={'nav-item ' + (page === 'settings' ? 'active' : '')} onClick={() => navigate('settings')}><Settings2 size={19} />{t('settings')}</button>{user ? <button className="user-profile" onClick={logout} title={t('logout')}><span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span><span><strong>{user.name}</strong><small>{t('logout')}</small></span><LogOut size={16} /></button> : <button className="button primary full" onClick={() => setAuth('login')}><LogIn size={17} />{t('login')}</button>}</div>
     </aside>
     <div className="app-body">

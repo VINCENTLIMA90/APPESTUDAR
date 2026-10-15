@@ -5,7 +5,7 @@ import {api} from './api';
 import {useRemote} from './Learning';
 
 export function PlansPage({selectedLesson}){
-  const {t,lang,user,requireUser,notify,navigate,loadCatalog}=useApp();
+  const {t,lang,user,requireUser,notify,navigate,loadCatalog,catalog}=useApp();
   const {data,error,reload}=useRemote('/billing',true,user?.id || 'guest');
   const [busy,setBusy]=useState(false);
   const returned=new URLSearchParams(window.location.search).get('billing');
@@ -35,13 +35,13 @@ export function PlansPage({selectedLesson}){
     {!data.checkoutAvailable&&<div className="payments-notice" role="status"><ShieldCheck size={22}/><p>{t('paymentsSoon')}</p></div>}
     <div className="pricing-grid">{data.plans.map(plan=>{
       const included=plan.modules.every(module=>data.modules.includes(module));
-      const count=plan.id==='both'?48:24;
+      const count=catalog.lessons.filter(lesson=>plan.modules.includes(lesson.module)).length;
       return <section key={plan.id} className={'pricing-card '+(plan.id==='both'?'featured':'')}>
         {plan.id==='both'&&<span className="pricing-ribbon">{t('bestValue')}</span>}
         <span className="large-icon">{plan.id==='both'?<Layers3 size={25}/>:<BookOpen size={25}/>}</span>
         <h2>{plan.id==='both'?t('bothModules'):plan.id==='ccse'?'CCSE':'DELE A2'}</h2>
         <div className="plan-price"><strong>{new Intl.NumberFormat(lang,{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(plan.amount/100)}</strong><span>{t('monthly')}</span></div>
-        <ul><li><Check size={16}/>{plan.id==='both'?t('bothLessonCount'):<>{count} {t('lessons').toLowerCase()} · {t('allLessons')}</>}</li><li><Check size={16}/>{t('guidedActivities')}</li><li><Check size={16}/>{t('progress')}</li></ul>
+        <ul><li><Check size={16}/>{plan.id==='both'?t('combinedLessons',{total:new Intl.NumberFormat(lang).format(count),ccse:new Intl.NumberFormat(lang).format(catalog.lessons.filter(l=>l.module==='ccse').length),dele:new Intl.NumberFormat(lang).format(catalog.lessons.filter(l=>l.module==='dele').length)}):<>{count} {t('lessons').toLowerCase()} · {t('allLessons')}</>}</li><li><Check size={16}/>{t('guidedActivities')}</li><li><Check size={16}/>{t('progress')}</li></ul>
         <button className={'button full '+(plan.id==='both'?'primary':'outline')} disabled={busy||included||!data.checkoutAvailable} onClick={()=>checkout(plan.id)}>{t(included?'activeSubscription':data.checkoutAvailable?'subscribe':'notAvailable')}{!included&&<ArrowRight size={16}/>}</button>
       </section>;
     })}</div>
