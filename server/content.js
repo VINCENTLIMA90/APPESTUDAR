@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
+import { extraLessons, extraQuestions, taskLibrary } from './curriculum.js';
 // All practice material below is original. It is not the official Cervantes question bank.
 export const languages = ['pt-PT', 'pt-BR', 'en', 'fr', 'ar', 'de', 'es'];
 const titles = (pt, br, en, fr, ar, de, es) => Object.fromEntries(languages.map((l, i) => [l, [pt, br, en, fr, ar, de, es][i]]));
-export const lessons = [
+const foundationLessons = [
   { id: 'c1', module: 'ccse', category: 'government', minutes: 8, title: titles('A Constituição e os teus direitos', 'A Constituição e seus direitos', 'The Constitution and your rights', 'La Constitution et vos droits', 'الدستور وحقوقك', 'Die Verfassung und deine Rechte', 'La Constitución y tus derechos'), icon: 'landmark',
     intro: titles('Conhece as bases da democracia espanhola.', 'Conheça as bases da democracia espanhola.', 'Understand the foundations of Spanish democracy.', 'Découvrez les bases de la démocratie espagnole.', 'تعرّف على أسس الديمقراطية الإسبانية.', 'Lerne die Grundlagen der spanischen Demokratie kennen.', 'Conoce las bases de la democracia española.'),
     sections: [['La Constitución de 1978', 'La Constitución española fue aprobada en referéndum el 6 de diciembre de 1978. España se constituye en un Estado social y democrático de derecho. Su forma política es la monarquía parlamentaria.'], ['Derechos y deberes', 'Todas las personas son iguales ante la ley. La Constitución reconoce la libertad religiosa y el derecho a la educación. Los ciudadanos contribuyen al sostenimiento de los gastos públicos mediante los impuestos.'], ['Los poderes del Estado', 'Las Cortes Generales ejercen el poder legislativo: el Congreso de los Diputados y el Senado. El Gobierno ejerce el poder ejecutivo. Los jueces y magistrados ejercen el poder judicial.']], takeaway: 'Constitución: 1978 · Monarquía parlamentaria · Tres poderes: legislativo, ejecutivo y judicial.' },
@@ -31,7 +32,7 @@ export const lessons = [
 
 // Stable IDs preserve error review when new questions are inserted into the bank.
 const q = (category, prompt, options, correct, explanation, audio = '') => ({ id: 'q-' + createHash('sha256').update(category + prompt).digest('hex').slice(0, 16), module: ['government', 'geography', 'culture', 'society'].includes(category) ? 'ccse' : 'dele', category, prompt, options, correct, explanation, audio });
-export const questions = [
+const foundationQuestions = [
   q('government', '¿En qué año se aprobó la Constitución española vigente?', ['1978', '1986', '1992'], 0, 'La Constitución se aprobó en referéndum el 6 de diciembre de 1978.'),
   q('government', 'La forma política del Estado español es…', ['una república federal.', 'una monarquía parlamentaria.', 'una monarquía absoluta.'], 1, 'La Constitución define España como una monarquía parlamentaria.'),
   q('government', '¿Qué institución ejerce el poder legislativo?', ['El Gobierno', 'Las Cortes Generales', 'El Tribunal Supremo'], 1, 'Las Cortes Generales están formadas por el Congreso y el Senado.'),
@@ -102,6 +103,7 @@ export const questions = [
 ];
 
 export const tasks = {
+  ...taskLibrary,
   writing: { prompt: 'Escribe un correo a un amigo para invitarlo a pasar un fin de semana contigo. Explica dónde vives, qué actividades podéis hacer y cómo puede llegar. Como orientación para esta práctica, escribe entre 60 y 80 palabras.', model: 'Hola, Carlos:\n¿Qué tal? Te escribo para invitarte a mi casa el próximo fin de semana. Vivo en Valencia, cerca de la playa. El sábado podemos pasear por el centro y comer una paella. El domingo me gustaría ir contigo al mercado. Puedes venir en tren; te espero en la estación el viernes por la tarde. Dime si puedes venir.\nUn abrazo,\nAlex', rubric: ['He incluido un saludo y una despedida.', 'He explicado dónde vivo, las actividades y el transporte.', 'He unido las ideas con conectores sencillos.', 'He revisado los verbos y la concordancia.'] },
   speaking: { prompt: 'Habla durante uno o dos minutos sobre ti: dónde vives, qué haces durante la semana, qué te gusta hacer en tu tiempo libre y qué hiciste el fin de semana pasado. Después responde: ¿qué te gustaría hacer el próximo fin de semana?', model: 'Me llamo Alex y vivo en Sevilla. Trabajo por las mañanas y estudio español por las tardes. Me gusta caminar y cocinar. El fin de semana pasado visité a unos amigos y comimos juntos. El próximo fin de semana me gustaría ir a la playa porque va a hacer buen tiempo.', rubric: ['He hablado de todos los puntos de la tarea.', 'He dado detalles usando frases completas.', 'He hablado del presente, del pasado y de un plan.', 'Al escucharme, mi mensaje se entiende.'] },
 };
@@ -111,3 +113,9 @@ export const officialSources = [
   { id: 'dele', title: 'DELE · Preparar la prueba', url: 'https://examenes.cervantes.es/es/dele/preparar-prueba', description: 'Modelos de examen, guías y materiales de preparación.' },
   { id: 'a2', title: 'DELE A2 · Información del examen', url: 'https://examenes.cervantes.es/es/dele/examenes/a2', description: 'Estructura, tareas y documentación del nivel A2.' },
 ];
+export const questions = [...foundationQuestions, ...extraQuestions];
+export const lessons = [...foundationLessons, ...extraLessons].map(lesson => ({ ...lesson,
+  reviewedAt: '2026-10-15', contentType: 'original',
+  referenceUrl: lesson.module === 'ccse' ? 'https://examenes.cervantes.es/es/ccse/como' : 'https://examenes.cervantes.es/es/dele/examenes/a2',
+  checkpoints: questions.filter(q => q.category === lesson.category).slice(-2).map(({prompt,options,correct,explanation}) => ({prompt,options,correct,explanation}))
+}));

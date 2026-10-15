@@ -24,7 +24,7 @@ async function request(route, { body, method, cookie, headers = {} } = {}) {
 async function register(email = 'alice@example.test') { return request('/auth/register', { body: { name: 'Alice', email, password: 'a-strong-test-password', language: 'pt-PT' } }); }
 test('catalog exposes lessons and tasks, without answer bank or solutions', async () => {
   const response = await request('/catalog');
-  assert.equal(response.status, 200); assert.equal(response.data.lessons.length, 8); assert.equal(response.data.languages.length, 7);
+  assert.equal(response.status, 200); assert.equal(response.data.lessons.length, lessons.length); assert.equal(response.data.languages.length, 7);
   assert.equal(response.data.questions, undefined); assert.ok(response.data.tasks.speaking); assert.ok(response.data.tasks.writing);
 });
 test('auth stores a salted password, restores sessions and rejects cross-site requests', async () => {

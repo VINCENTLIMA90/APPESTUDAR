@@ -25,17 +25,22 @@ npm start
 
 ## O que está implementado
 
-- Dois módulos: CCSE e DELE A2, com oito aulas e 67 perguntas originais de prática em espanhol.
+- Dois módulos: CCSE e DELE A2, com 16 aulas e 103 perguntas originais de prática em espanhol, fontes de referência e exercícios de consolidação.
 - Interface em PT-PT, PT-BR, inglês, francês, árabe (RTL), alemão e espanhol. Os conteúdos pedagógicos estão em espanhol, a língua dos exames; as explicações de correção da IA seguem o idioma da conta.
 - Registo e início de sessão com palavras-passe protegidas por scrypt, cookies HttpOnly e sessões no servidor. Não há contas ou palavras-passe predefinidas.
 - Progresso por utilizador, aulas concluídas, resultados, dias de atividade, histórico e revisão dos erros até serem respondidos corretamente.
 - Avaliação inicial em três etapas: 12 perguntas objetivas (leitura, áudio e conhecimentos cívicos), escrita e expressão oral. Não atribui um nível MCER certificado nem uma classificação oficial DELE.
 - Prática CCSE e simulado de 25 perguntas em 45 minutos com exercícios próprios, distribuídos por cinco tarefas (10 + 3 + 2 + 3 + 7), incluindo três perguntas de verdadeiro/falso. Não inclui o banco oficial completo.
 - Prática DELE reduzida de leitura e áudio, além de escrita e oralidade em separado. O teste reduzido de 16 perguntas/35 minutos **não reproduz o exame oficial completo**.
+- Percurso completo guiado pelo modelo oficial DELE: 25 itens de leitura/60 min, 25 de audição/40 min, duas tarefas escritas/45 min, preparação oral/12 min e três tarefas orais/12 min. Os PDFs, fotografias e áudios naturais abrem diretamente nas fontes oficiais; as respostas ficam na app. O percurso pode ser retomado, mas os temporizadores continuam a contar.
 - Áudio de compreensão gerado pela síntese de voz do navegador, com transcrição acessível. Depende de uma voz espanhola disponível no dispositivo; se a síntese não funcionar, aparece a transcrição. Não se trata dos áudios oficiais.
-- Gravação de resposta oral até dois minutos, reprodução, armazenamento e consulta posterior. Microfone real depende do dispositivo e da autorização do utilizador.
+- Gravação de resposta oral até três minutos na prática livre e quatro por tarefa no percurso completo, reprodução, armazenamento e consulta posterior. Microfone real depende do dispositivo e da autorização do utilizador.
 - Respostas modelo e grelhas de autoavaliação, separadas dos resultados objetivos e dos comentários da IA.
 - Exportação dos dados e eliminação de conta, resultados e gravações.
+- Plano de estudo com frequência e duração das sessões, objetivo CCSE/DELE/ambos e uma janela de preparação sugerida a partir da avaliação e do desempenho recente. A previsão é provisória até concluir a avaliação e não equivale a uma data de exame ou certificação.
+- Revisão espaçada de perguntas e 30 cartões de vocabulário, com intervalos ajustados pela dificuldade recordada.
+- Mapa de competências, evidência limitada quando a amostra é pequena e marcos de atividade. Escrita e oralidade mantêm evidência qualitativa, sem uma percentagem de proficiência inventada.
+- Tutor de espanhol com conversas, explicações de erros e exercícios dirigidos por IA, usando os erros recentes como contexto.
 
 ## Correção por IA: API pessoal
 
@@ -48,6 +53,8 @@ A correção é sempre solicitada explicitamente, com consentimento para enviar 
 - Gemini: escrita ou gravação enviada como áudio. Comentários orientativos, sem pontuação normalizada de pronúncia.
 
 Os testes da integração usam respostas simuladas e verificam os protocolos dos três fornecedores. Não foi executada uma correção real com uma chave paga; a qualidade e o acesso aos modelos ainda precisam dessa validação.
+
+O tutor exige consentimento e uma ação explícita em cada envio. As conversas ficam guardadas na conta e são incluídas na exportação. Os comentários sobre escrita/oralidade podem incluir exercícios baseados nos erros identificados. A chave de API continua apenas na memória da sessão. Consulte [CONTENT.md](CONTENT.md) para as fontes, datas e limites do plano e das avaliações.
 
 ## Materiais oficiais e atualização
 
@@ -63,6 +70,8 @@ O servidor consulta as três fontes de materiais ao arrancar e a cada 24 horas e
 
 Esta monitorização não constitui uma atualização automática do banco de perguntas nem valida que um PDF novo se aplica a determinada data de exame. Uma alteração no conteúdo de um PDF que mantenha o mesmo link também não é detetada. Antes de comercializar, a incorporação de materiais oficiais e a revisão das edições terão de ser tratadas como um fluxo editorial, com as respetivas condições de utilização. A app não redistribui PDFs nem questões oficiais; apresenta links e exercícios próprios.
 
+Exceção específica para o percurso guiado: as duas claves oficiais A2 são verificadas por SHA-256, mesmo mantendo o mesmo link. Uma mudança suspende a correção do modelo até revisão. Falhas de rede são apresentadas separadamente e não são tratadas como uma versão nova. As respostas objetivas guardam a referência à clave consultada; escrita e oralidade não recebem uma nota oficial.
+
 Na configuração atual foi possível consultar as páginas oficiais DELE e a informação geral CCSE. A página CCSE de preparação devolveu uma resposta interrompida; a sua edição atual não foi confirmada. O estado na aplicação reflete a verificação real do servidor, sem marcar a fonte como atualizada quando falha.
 
 O DELE A2 oficial, conforme a página consultada, tem leitura (60 min, 25 itens), compreensão auditiva (40 min, 25 itens), escrita (45 min, 2 tarefas) e oral (12 min, mais 12 min de preparação, 3 tarefas). A prática própria é intencionalmente reduzida e está identificada na interface.
@@ -74,7 +83,7 @@ npm test
 npm run test:e2e
 ```
 
-Os testes de API verificam autenticação, isolamento entre utilizadores, correção no servidor, revisão de erros, gravações, feedback, exportação e eliminação. Os testes de fontes usam respostas controladas para verificar alterações e falhas. Os testes de navegador verificam registo, progresso após reload, avaliação inicial, escrita, gravação com microfone simulado, sete idiomas e layout móvel RTL.
+Os testes de API verificam autenticação, isolamento entre utilizadores, correção no servidor, revisão espaçada, previsão do plano, percurso DELE, gravações, tutor, feedback, exportação e eliminação. Os testes de fontes usam respostas controladas para verificar alterações e falhas. Os testes de navegador verificam registo, progresso após reload, avaliação inicial, plano, revisão, percurso DELE retomável, escrita, gravação com microfone simulado, tutor com resposta simulada, sete idiomas e layout móvel RTL.
 
 O Playwright utiliza `/usr/bin/chromium` se existir; `CHROMIUM_PATH` permite outra instalação. Caso contrário, requer uma instalação de Chromium compatível com o Playwright. Os testes usam a porta 4173 e uma base SQLite separada em `/tmp/rumbo-e2e`, sem alterar os dados da aplicação. Os testes do microfone usam um dispositivo simulado e não comprovam a qualidade de gravação no telemóvel do utilizador.
 

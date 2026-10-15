@@ -80,7 +80,39 @@ test('seven interface languages and mobile Arabic layout render without overflow
   await page.getByRole('button', { name: 'مساحة الدراسة', exact: true }).click();
   await expect(page.locator('.sidebar')).toHaveClass(/is-open/);
   await page.locator('.sidebar nav').getByRole('button', { name: 'الدروس', exact: true }).click();
-  await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(4);
+  await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(8);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBeFalsy();
   expect(errors).toEqual([]);
+});
+test('study plan recalculates and spaced review survives navigation',async({page})=>{
+ await createAccount(page);await page.getByRole('button',{name:'Plano de estudo',exact:true}).first().click();
+ await expect(page.locator('.forecast-card h2')).toBeVisible();const before=Number((await page.locator('.forecast-card h2').innerText()).split('–')[0]);
+ await page.getByLabel('Sessões por semana',{exact:true}).selectOption('6');await page.getByLabel('Minutos por sessão',{exact:true}).selectOption('60');
+ await page.locator('.plan-form').getByRole('button',{name:'Guardar',exact:true}).click();
+ await expect.poll(async()=>Number((await page.locator('.forecast-card h2').innerText()).split('–')[0])).toBeLessThan(before);
+ await page.screenshot({path:'/tmp/rumbo-study-plan.png',fullPage:true});
+ await page.getByRole('button',{name:'Revisão inteligente',exact:true}).click();await expect(page.locator('.flashcard h2')).toBeVisible();const word=await page.locator('.flashcard h2').innerText();
+ await page.getByRole('button',{name:'Ver resposta',exact:true}).click();await expect(page.locator('.flashcard-answer')).toBeVisible();await page.getByRole('button',{name:'Lembrei-me',exact:true}).click();
+ await expect(page.locator('.flashcard h2')).not.toHaveText(word);
+ await page.getByRole('button',{name:'O meu progresso',exact:true}).click();await expect(page.locator('.competency-card')).toHaveCount(8);
+ await page.reload();await page.getByRole('button',{name:'Plano de estudo',exact:true}).first().click();await expect(page.getByLabel('Sessões por semana',{exact:true})).toHaveValue('6');
+ await page.setViewportSize({width:390,height:844});await page.locator('.language-picker select').selectOption('ar');expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBeFalsy();
+});
+test('full DELE model resumes answers and covers all five timed stages',async({page})=>{
+ page.on('dialog',dialog=>dialog.accept());await createAccount(page);
+ await page.getByRole('button',{name:'Testes e prática',exact:true}).click();await page.locator('.module-tabs').getByRole('button',{name:'DELE A2',exact:true}).click();await page.locator('.full-exam-banner').getByRole('button',{name:'Começar agora',exact:true}).click();
+ await page.getByRole('button',{name:'Começar percurso completo',exact:true}).click();await expect(page.locator('.official-answer-grid fieldset')).toHaveCount(5);
+ const saved=page.waitForResponse(r=>r.url().endsWith('/answers')&&r.request().method()==='PATCH'&&r.status()===200);await page.locator('.official-answer-grid fieldset').first().getByRole('radio',{name:'C',exact:true}).check();await saved;
+ await page.reload();await page.getByRole('button',{name:'Testes e prática',exact:true}).click();await page.locator('.module-tabs').getByRole('button',{name:'DELE A2',exact:true}).click();await page.locator('.full-exam-banner').getByRole('button').click();await page.getByRole('button',{name:'Continuar percurso',exact:true}).click();await expect(page.locator('.official-answer-grid fieldset').first().getByRole('radio',{name:'C',exact:true})).toBeChecked();
+ await page.getByRole('button',{name:'Terminar esta parte',exact:true}).click();await expect(page.locator('.natural-audio audio')).toHaveAttribute('src',/A2_0220_CA_Audio_T1.mp3/);await page.locator('.exam-task-tabs button').nth(3).click();await expect(page.locator('.official-answer-grid fieldset')).toHaveCount(7);await expect(page.locator('.official-answer-grid fieldset').first().getByRole('radio',{name:'K',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Terminar esta parte',exact:true}).click();await expect(page.getByLabel('Expressão escrita',{exact:true})).toBeVisible();await page.getByLabel('Expressão escrita',{exact:true}).fill('Hola, amigo. Vivo en una ciudad muy bonita. Trabajo en una tienda y comparto casa con dos personas muy amables. Me gusta mucho vivir aquí. Puedes visitarme el próximo fin de semana. Un abrazo.');await page.getByRole('button',{name:'Guardar resposta',exact:true}).click();await expect(page.getByRole('button',{name:'Progresso guardado',exact:true})).toBeDisabled();
+ await page.locator('.exam-task-tabs button').nth(1).click();await expect(page.getByLabel('Expressão escrita',{exact:true})).toHaveValue('');await page.locator('.exam-task-tabs button').first().click();await expect(page.getByLabel('Expressão escrita',{exact:true})).toHaveValue(/Hola, amigo\./);
+ await page.getByRole('button',{name:'Terminar esta parte',exact:true}).click();await expect(page.locator('.oral-preparation')).toBeVisible();await page.getByRole('button',{name:'Terminar esta parte',exact:true}).click();await page.locator('.exam-task-tabs button').nth(1).click();await expect(page.locator('.task-prompt a')).toHaveAttribute('href',/T2_T3.pdf/);await page.getByRole('button',{name:'Terminar esta parte',exact:true}).click();await expect(page.locator('.model-scores>div')).toHaveCount(2);await expect(page.locator('.official-response-list .history-row')).toHaveCount(5);
+});
+test('tutor UI sends explicit consent and keeps a simulated API key only in memory',async({page})=>{
+ await createAccount(page);await page.getByRole('button',{name:'Tutor de espanhol',exact:true}).click();
+ await page.getByLabel('Chave de API',{exact:true}).fill('test-ui-key-not-a-real-secret');await page.locator('.settings-card').getByRole('button',{name:'Guardar',exact:true}).click();
+ await page.route('**/api/tutor/chat',async route=>{const body=route.request().postDataJSON();expect(body.consent).toBe(true);expect(body.key).toBe('test-ui-key-not-a-real-secret');await route.fulfill({json:{id:'mock-conversation',mode:'conversation',messages:[{role:'user',content:body.message},{role:'assistant',content:{reply:'¡Muy bien! Vamos a practicar.',correction:'Usa «fui» para hablar de ayer.',question:'¿Con quién fuiste?',focus:'Pasado'}}]}});});
+ await page.locator('.tutor-form textarea').fill('Ayer voy al parque.');await page.locator('.tutor-form input[type=checkbox]').check();await page.getByRole('button',{name:'Enviar ao tutor',exact:true}).click();await expect(page.locator('.tutor-question')).toHaveText('¿Con quién fuiste?');expect(await page.evaluate(()=>JSON.stringify(localStorage).includes('test-ui-key-not-a-real-secret'))).toBeFalsy();
+ await page.reload();await page.getByRole('button',{name:'Tutor de espanhol',exact:true}).click();await expect(page.getByLabel('Chave de API',{exact:true})).toHaveValue('');
 });

@@ -1,16 +1,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { ArrowRight, BookOpen, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, ClipboardCheck, Flame, Globe2, LayoutDashboard, LogIn, LogOut, Menu, Settings2, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, ClipboardCheck, Flame, Globe2, LayoutDashboard, LogIn, LogOut, Menu, MessageCircle, RotateCcw, Settings2, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { api } from './api';
 import { locales, translate } from './i18n';
 import { Brand, Modal } from './components';
 import { Dashboard, LessonPage, Lessons, ProgressPage, SourcesPage, SettingsPage, AssessmentPage, TestsPage } from './pages';
 import { Quiz, QuizResult } from './Quiz';
 import { SkillPractice } from './SkillPractice';
+import { PlanPage, ReviewPage } from './Learning';
+import { TutorPage } from './Tutor';
+import { FullExamPage } from './FullExam';
 
 const Context = createContext();
 export const useApp = () => useContext(Context);
 const emptyProgress = { completed: [], results: [], submissions: [], activeDays: [], streak: 0 };
-const navigation = [['dashboard', LayoutDashboard], ['lessons', BookOpen], ['tests', ClipboardCheck], ['assessment', Sparkles], ['progress', ChartNoAxesCombined], ['sources', ShieldCheck]];
+const navigation = [['dashboard', LayoutDashboard], ['plan',CalendarDays], ['lessons', BookOpen], ['tests', ClipboardCheck], ['reviewHub',RotateCcw], ['tutor',MessageCircle], ['assessment', Sparkles], ['progress', ChartNoAxesCombined], ['sources', ShieldCheck]];
 
 export default function App() {
   const [lang, setLang] = useState(() => { try { return localStorage.getItem('rumbo-language') || 'pt-PT'; } catch { return 'pt-PT'; } });
@@ -20,6 +23,7 @@ export default function App() {
   const [auth, setAuth] = useState(null), [authNext, setAuthNext] = useState(null), [mobile, setMobile] = useState(false);
   const [toast, setToast] = useState(null), [bootError, setBootError] = useState(false), [ready, setReady] = useState(false);
   const [ai, setAI] = useState({ provider: 'openai', key: '' });
+  const [tutorContext,setTutorContext]=useState('');
   const t = key => translate(lang, key);
   const notify = useCallback((message, error = false) => setToast({ message, error, id: Date.now() }), []);
   const loadProgress = useCallback(async () => { const data = await api('/progress'); setProgress(data); return data; }, []);
@@ -58,18 +62,19 @@ export default function App() {
       } catch (error) { notify(t(error.message), true); }
     });
   }
-  function openSkill(kind) { requireUser(() => { setSkill(kind); setPage('tests'); setQuiz(null); setResult(null); setLesson(null); }); }
+  function openSkill(kind,taskId=kind,existing=null) { requireUser(() => { setSkill({kind,taskId,existing}); setPage('tests'); setQuiz(null); setResult(null); setLesson(null); }); }
+  function askTutor(context) { requireUser(()=>{navigate('tutor');setTutorContext(context);}); }
   function openLesson(selected) { setLesson(selected); setModule(selected.module); setPage('lessons'); setQuiz(null); setResult(null); setSkill(null); window.scrollTo({ top: 0 }); }
   async function changeLanguage(value) { setLang(value); if (user) { try { await api('/me', { language: value }, 'PATCH'); } catch (error) { notify(t(error.message), true); } } }
   async function logout() { try { await api('/auth/logout', {}); setUser(null); setProgress(emptyProgress); setAI({ provider: 'openai', key: '' }); navigate('dashboard'); } catch (error) { notify(t(error.message), true); } }
-  const context = { lang, t, user, catalog, progress, loadProgress, notify, navigate, module, setModule, startQuiz, openSkill, openLesson, requireUser, ai, setAI, changeLanguage };
+  const context = { lang, t, user, catalog, progress, loadProgress, notify, navigate, module, setModule, startQuiz, openSkill, openLesson, requireUser, ai, setAI, changeLanguage,askTutor,tutorContext };
   let content;
   if (!ready) content = <div className="loading-state">{bootError ? <><p>{t('error')}</p><button className="button primary" onClick={boot}>{t('retry')}</button></> : <><span className="spinner" />{t('loading')}</>}</div>;
   else if (quiz) content = <Quiz quiz={quiz} onFinish={async data => { setResult(data); setQuiz(null); await loadProgress(); }} onExit={() => navigate('tests')} />;
   else if (result) content = <QuizResult result={result} onBack={() => setResult(null)} />;
-  else if (skill) content = <SkillPractice key={skill} kind={skill} onBack={() => setSkill(null)} />;
+  else if (skill) content = <SkillPractice key={skill.taskId} kind={skill.kind} taskId={skill.taskId} existing={skill.existing} onBack={() => setSkill(null)} />;
   else if (lesson) content = <LessonPage lesson={lesson} onBack={() => setLesson(null)} />;
-  else content = ({ dashboard: <Dashboard />, lessons: <Lessons />, tests: <TestsPage />, assessment: <AssessmentPage />, progress: <ProgressPage onResult={setResult} />, sources: <SourcesPage />, settings: <SettingsPage /> })[page];
+  else content = ({ dashboard: <Dashboard />, plan:<PlanPage/>,reviewHub:<ReviewPage/>,tutor:<TutorPage/>,fullExam:<FullExamPage/>, lessons: <Lessons />, tests: <TestsPage />, assessment: <AssessmentPage />, progress: <ProgressPage onResult={setResult} />, sources: <SourcesPage />, settings: <SettingsPage /> })[page];
   return <Context.Provider value={context}>
     <a href="#main" className="skip-link">{t('continue')}</a>
     {mobile && <div className="sidebar-overlay" onClick={() => setMobile(false)} />}
@@ -78,7 +83,7 @@ export default function App() {
       <p className="brand-tagline">{t('tagline')}</p>
       <button className="mobile-close icon-button" onClick={() => setMobile(false)} aria-label={t('close')}><X size={20} /></button>
       <div className="sidebar-label">{t('workspace')}</div>
-      <nav aria-label={t('workspace')}>{navigation.map(([id, Icon]) => <button key={id} onClick={() => navigate(id)} className={'nav-item ' + (page === id ? 'active' : '')} aria-current={page === id ? 'page' : undefined}><Icon size={19} strokeWidth={1.7} /><span>{t(id)}</span>{id === 'assessment' && <span className="nav-dot" />}</button>)}</nav>
+      <nav aria-label={t('workspace')}>{navigation.map(([id, Icon]) => <button key={id} onClick={() => navigate(id)} className={'nav-item ' + (page === id || (page==='fullExam'&&id==='tests') ? 'active' : '')} aria-current={page === id ? 'page' : undefined}><Icon size={19} strokeWidth={1.7} /><span>{t(id)}</span>{id === 'assessment' && <span className="nav-dot" />}</button>)}</nav>
       <div className="sidebar-note"><span className="note-spark"><Sparkles size={19} /></span><strong>{t('studyPlan')}</strong><p>{t('quote')}</p><div className="note-line" /></div>
       <div className="sidebar-bottom"><button className={'nav-item ' + (page === 'settings' ? 'active' : '')} onClick={() => navigate('settings')}><Settings2 size={19} />{t('settings')}</button>{user ? <button className="user-profile" onClick={logout} title={t('logout')}><span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span><span><strong>{user.name}</strong><small>{t('logout')}</small></span><LogOut size={16} /></button> : <button className="button primary full" onClick={() => setAuth('login')}><LogIn size={17} />{t('login')}</button>}</div>
     </aside>
