@@ -151,3 +151,11 @@ test('deleting an account expires its unpaid checkout before removing its data',
   const expiration=state.requests.findIndex(r=>r.route.endsWith('/expire'));
   const list=state.requests.findIndex(r=>r.route==='/subscriptions');assert.ok(expiration<list);
 });
+
+test('checkout requires two independent acceptances and stores each text version and date',async t=>{
+ const {request,account,runtime,state}=await fixture(t),a=await account();
+ for(const body of [{plan:'ccse',termsAccepted:true},{plan:'ccse',immediateAccess:true},{plan:'ccse',termsAccepted:false,immediateAccess:true}])assert.equal((await request('/billing/checkout',{body,cookie:a.cookie})).data.error,'checkout_consent_required');
+ assert.equal(state.requests.length,0);assert.equal(runtime.db.prepare('SELECT COUNT(*) n FROM checkout_consent_acceptances').get().n,0);
+ assert.equal((await request('/billing/checkout',{body:{plan:'ccse',termsAccepted:true,immediateAccess:true},cookie:a.cookie})).status,200);
+ const accepted=runtime.db.prepare('SELECT kind,version,accepted_at FROM checkout_consent_acceptances ORDER BY kind').all();assert.equal(accepted.length,2);assert.deepEqual(accepted.map(r=>r.kind),['immediate_access','terms']);assert.notEqual(accepted[0].version,accepted[1].version);assert.ok(accepted.every(r=>Number.isFinite(Date.parse(r.accepted_at))));
+});

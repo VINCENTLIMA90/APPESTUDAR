@@ -29,13 +29,13 @@ Playwright usa `/usr/bin/chromium` ou `CHROMIUM_PATH`, porta 4173 e dados isolad
 
 ## Acesso e módulos
 
-O catálogo tem 48 aulas próprias, 24 de cada módulo, e 103 perguntas próprias de prática. Não inclui o banco oficial CCSE completo nem copia/adapta questões do manual oficial. A incorporação desse banco aguarda decisão jurídica.
+O catálogo tem 48 aulas próprias, 24 de cada módulo. O banco CSV tem 298 factos e 448 variantes: 103 perguntas aprovadas migradas, 150 novos factos CCSE com duas variantes cada e 45 perguntas DELE para completar nove temas, todas as novas em rascunho. Não inclui o banco oficial CCSE completo nem copia/adapta questões do manual oficial. A incorporação desse banco aguarda decisão jurídica.
 
 | Recurso | Conta gratuita | Subscrição ativa |
 | --- | --- | --- |
 | Aulas | c1, c2, d1, d2 | Todas do módulo adquirido |
 | Avaliação inicial | Completa: perguntas, escrita e oralidade | Completa |
-| Simulados | 1 CCSE completo e 1 DELE reduzido por conta | Ilimitados no módulo adquirido |
+| Simulados | 1 CCSE completo e 1 DELE reduzido por conta, com email verificado | Ilimitados no módulo adquirido |
 | Prática, revisão, plano | Bloqueados | Incluídos no módulo adquirido |
 | Percurso completo DELE | Bloqueado | DELE A2 ou conjunto |
 | Tutor e correção IA | Bloqueados | Conforme quotas abaixo |
@@ -63,7 +63,7 @@ Fornecedores suportados: OpenAI, Anthropic e Gemini. OpenAI transcreve oralidade
 
 Palavras-passe protegidas por scrypt e sessões HttpOnly/SameSite. `MAX_SESSIONS_PER_USER=1` por omissão: um novo início de sessão termina a sessão ativa mais antiga e o dispositivo anterior recebe a mensagem correspondente. O esquema inclui `device_id` e um mecanismo de tokens com finalidade; não implementa códigos por email em dispositivo novo.
 
-Recuperação e verificação de email usam tokens aleatórios, guardados só por hash, de uso único e com validade de 60 minutos. A recuperação responde sempre da mesma forma, exista ou não a conta. Alterar a palavra-passe invalida todas as sessões. O email tem de estar verificado para iniciar uma subscrição.
+Recuperação e verificação de email usam tokens aleatórios, guardados só por hash, de uso único e com validade de 60 minutos. A recuperação responde sempre da mesma forma, exista ou não a conta. Alterar a palavra-passe invalida todas as sessões. O email tem de estar verificado para iniciar uma subscrição ou usar um simulado gratuito. A avaliação e as aulas gratuitas continuam acessíveis antes da verificação. O reenvio tem espera de 60 segundos, aplicada no servidor e na interface. A recuperação mantém a mesma resposta para contas existentes e inexistentes. Falhas de envio ficam em email_deliveries, sem tokens nem links, e aparecem na app para a verificação.
 
 Configurar Resend ou Postmark através de `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` e a URL canónica `APP_URL`. Em desenvolvimento (`NODE_ENV=development`), sem serviço, o link aparece apenas nos logs locais. **Nunca é registado em produção**. Sem serviço em produção, o registo continua possível, mas verificação e recuperação dependem da configuração do email.
 
@@ -96,4 +96,44 @@ SQLite guarda os dados em `DATA_DIR`; as migrações são aditivas. Não substit
 
 ## Textos legais
 
-Termos, privacidade e cancelamento/desistência existem como estrutura, claramente marcados **[A REVER POR JURISTA]**, com ligações no rodapé e no registo. O checkout exige no servidor a aceitação dos termos e o pedido de início imediato do acesso digital; regista a versão provisória e a data. A validação jurídica e fiscal continua pendente, incluindo a redação final sobre desistência.
+Termos, privacidade e cancelamento/desistência existem como estrutura, claramente marcados **[A REVER POR JURISTA]**, com ligações no rodapé e no registo. O checkout exige duas aceitações independentes no servidor: termos/privacidade e pedido de início imediato, com reconhecimento dos efeitos na desistência. Cada uma é guardada com tipo, versão provisória e data em checkout_consent_acceptances. Os antigos registos únicos são preservados, sem fabricar aceitações independentes retroativas. A validação jurídica e fiscal continua pendente, incluindo a redação final sobre desistência.
+
+## Oferta e recomendação
+
+A apresentação comunica a avaliação inicial, um simulado CCSE completo, um teste DELE A2 e duas aulas por módulo, sem cartão. O bloco sobre nacionalidade guarda a resposta apenas no navegador, com proteção quando localStorage está indisponível. A lista de países está em `src/config/exam-requirements.js`. Usam-se nomes dos países de Intl.DisplayNames nas sete línguas. O registo recebe apenas `initialGoal` (preferência do plano), sem nacionalidade nem resposta ao questionário. A escolha «Sim» começa com objetivo CCSE; não altera objetivos já guardados de uma conta existente.
+
+Confirmar sempre requisitos e eventuais dispensas nas fontes oficiais. A recomendação é inicial e não substitui a análise do processo individual.
+
+## Banco editável e percurso por factos
+
+O mestre é [content/questions.csv](content/questions.csv), CSV UTF-8 com BOM, separador `;`, respostas corretas numeradas de 1 a 3. Pode ser editado em Excel/Sheets. O [guia de edição](content/README.md) explica colunas, variantes e aprovação. O código deixou de conter as 103 perguntas do banco. As atividades exemplificativas das aulas e os documentos DELE externos são componentes pedagógicos distintos.
+
+```sh
+node scripts/import-questions.js --check
+node scripts/import-questions.js content/questions.csv
+node scripts/export-drafts.js content/questions.csv /tmp/rumbo-rascunhos.csv
+```
+
+Sem erros, a importação carrega todas as linhas em SQLite numa transação; apenas `aprovada` é servida. Em caso de erros, lista as linhas e não importa nada. O servidor sincroniza o mestre validado no arranque. A importação manual usa `DATA_DIR`; não a apontar a uma base de produção sem a cópia de segurança e a revisão editorial habituais. A API consulta o banco atual; as perguntas/opções dos testes iniciados ficam congeladas no servidor para preservar a correção de cada tentativa.
+
+No fim da aula, o teste do tema seleciona 5–8 perguntas ligadas por `lesson_id`/`lesson_ids`, mistura tipos quando existem aprovados e dá explicação após cada resposta. As opções são baralhadas no servidor. O simulador CCSE usa apenas `exame`, 25 perguntas e 45 minutos, sem ajudas durante a prova: 10 de governo, 3 V/F de direitos/deveres, 2 de geografia, 3 de cultura e 7 de sociedade. **Exceção de formato:** a variante `exame` de direitos/deveres usa duas opções para manter a tarefa V/F; as outras usam três. Os 30 novos factos dessa categoria têm `exame` V/F e uma variante `invertida` de três opções.
+
+Erros e revisões são agrupados por facto. Quando existe outra variante aprovada, a revisão escolhe uma diferente da última falhada. Um facto é dominado com dois acertos em variantes diferentes em dias diferentes de Madrid. Autoavaliações de cartões não contam como prova de acerto. Os estados/logs antigos são conservados; cria-se uma agenda por facto e recupera-se evidência dos resultados anteriores, sem apagar o progresso. O export inclui também tentativas por facto e passos de aprendizagem.
+
+Os 103 factos legados têm uma única variante aprovada; por isso não passam a «dominados» por repetição da mesma pergunta. Será necessário aprovar outra variante para esse facto. As nove aulas DELE `d5`, `d17`–`d24` mostram o aviso de banco insuficiente até serem revistas/aprovadas as suas 45 novas perguntas. A restrição evita publicar rascunhos ou avaliar conteúdo de outra aula apenas para preencher cinco perguntas.
+
+O passo de leitura do manual do ano abre um PDF gratuito no site do Instituto Cervantes, em nova janela, e permite marcar a conclusão na conta. Não descarrega, extrai, resume, incorpora nem enquadra o manual. O URL/ano estão no ficheiro de configuração; a rede deste ambiente bloqueou a confirmação externa do endereço 2026, pelo que deve ser confirmado antes da publicação comercial.
+
+## Início de sessão com Google
+
+O fluxo é OAuth 2.0/OpenID Connect authorization code com PKCE S256 no servidor. Confere state, vínculo ao navegador, nonce, assinatura RS256 com chaves públicas Google, emissor, validade e audiência do id_token. Só aceita `email_verified=true`. Liga o email existente sem duplicar a conta e conserva a palavra-passe/objetivo anteriores. Uma conta nova fica verificada, recebe uma palavra-passe aleatória desconhecida e pode definir uma pela recuperação por email. Aplica o mesmo limite de sessões. Não se guardam access tokens, refresh tokens ou id_tokens.
+
+Para configurar:
+
+1. Criar/selecionar um projeto na Google Cloud Console e configurar o ecrã de consentimento OAuth, contactos, domínios e utilizadores de teste quando aplicável.
+2. Criar um cliente OAuth do tipo **Web application** para `openid email profile`.
+3. Registar exatamente a URI de redirecionamento: `APP_URL` + `/api/auth/google/callback` (por exemplo `https://rumbo-demo.onrender.com/api/auth/google/callback`). `APP_URL` deve ser uma origem HTTPS, sem caminho.
+4. Guardar `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` nas variáveis do servidor Render, junto de `APP_URL`. Não usar VITE_ nem colocar o segredo no Git/chat.
+5. Reiniciar/publicar e validar com uma conta de teste. Sem a configuração completa, o botão não aparece. Os testes automatizados simulam a troca de código e assinam tokens fictícios; não usaram contas ou segredos reais do Google.
+
+A política de privacidade provisória menciona Google e aguarda revisão jurídica. Configurar email continua necessário para recuperar ou definir uma palavra-passe, mesmo em contas Google.

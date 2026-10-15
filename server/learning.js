@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import {installFacts} from './facts.js';
 export const DAY = 86400000;
 export const studyDate = date => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(date));
 const addDays = (date, days) => new Date(new Date(date).getTime() + days * DAY).toISOString();
@@ -44,7 +45,7 @@ export function nextReview(previous, rating, now = new Date()) {
 }
 
 export function skillSummary(results, submissions) {
-  const names = ['government', 'geography', 'culture', 'society', 'reading', 'listening'];
+  const names = ['government', 'rights', 'geography', 'culture', 'society', 'reading', 'listening'];
   const skills = names.map(id => {
     const answers = results.flatMap(r => r.result.answers || []).filter(a => a.category === id).slice(0, 30);
     const recent = answers.slice(0, 10), older = answers.slice(10, 20);
@@ -83,7 +84,7 @@ export function estimatePlan(settings, results, submissions, now = new Date()) {
   return { ...combined, modules: Object.fromEntries(selected.map(m => [m, forecast([m])])), weeklyHours, provisional: !baseline || !submissions.some(s => s.kind === 'writing') || !submissions.some(s => s.kind === 'speaking'), assessmentDate: baseline?.created_at || null, targetTooSoon: !!settings.target_date && settings.target_date < studyDate(combined.from), skills, method: 'heuristic-v1', computedAt: new Date(now).toISOString() };
 }
 
-export function installLearning(app, db, { requireUser, questions, lessons, access, clock = () => new Date() }) {
+export function installLearning(app, db, { requireUser, bank, lessons, access, clock = () => new Date() }) {
   db.exec(`CREATE TABLE IF NOT EXISTS study_settings (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, goal TEXT NOT NULL DEFAULT 'both', sessions_week INTEGER NOT NULL DEFAULT 3, session_minutes INTEGER NOT NULL DEFAULT 30, target_date TEXT, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS review_state (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, item_id TEXT NOT NULL, kind TEXT NOT NULL, interval_days REAL NOT NULL, repetitions INTEGER NOT NULL, lapses INTEGER NOT NULL, due_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(user_id,item_id));
     CREATE TABLE IF NOT EXISTS review_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, item_id TEXT NOT NULL, rating TEXT NOT NULL, created_at TEXT NOT NULL);`);
@@ -92,7 +93,8 @@ export function installLearning(app, db, { requireUser, questions, lessons, acce
     submissions: db.prepare('SELECT kind,feedback,rubric,created_at FROM submissions WHERE user_id=? ORDER BY created_at DESC').all(userId).map(s=>({...s,rubric:JSON.parse(s.rubric)})),
   });
   const getSettings = userId => db.prepare('SELECT goal,sessions_week,session_minutes,target_date,updated_at FROM study_settings WHERE user_id=?').get(userId) || { goal: 'both', sessions_week: 3, session_minutes: 30, target_date: null, updated_at: null };
-  const items = [...vocabulary, ...questions.map(q => ({ id: q.id, kind: 'question', module: q.module, category: q.category, front: q.prompt, back: q.options[q.correct], example: q.explanation }))];
+  const facts=installFacts(db,bank,{clock});
+  const items = userId => [...vocabulary,...facts.cards(userId)];
   const record = (userId, itemId, kind, rating, log = true) => {
     const previous = db.prepare('SELECT * FROM review_state WHERE user_id=? AND item_id=?').get(userId, itemId);
     const state = nextReview(previous, rating, clock());
@@ -104,13 +106,13 @@ export function installLearning(app, db, { requireUser, questions, lessons, acce
     const allowedModules=access.modules(req.user.id);if(!allowedModules.length)return res.status(402).json({error:'subscription_required'});
     const settings={...getSettings(req.user.id)};if(settings.goal==='both'&&allowedModules.length<2||settings.goal!=='both'&&!allowedModules.includes(settings.goal))settings.goal=allowedModules.length===2?'both':allowedModules[0];
     const history = list(req.user.id), estimate = estimatePlan(settings, history.results, history.submissions, clock());
-    const allowed=settings.goal==='ccse'?['government','geography','culture','society']:settings.goal==='dele'?['reading','listening']:['government','geography','culture','society','reading','listening'];
+    const allowed=settings.goal==='ccse'?['government','rights','geography','culture','society']:settings.goal==='dele'?['reading','listening']:['government','rights','geography','culture','society','reading','listening'];
     const weakest = estimate.skills.filter(s => s.percent !== null&&allowed.includes(s.id)).sort((a, b) => a.percent - b.percent)[0];
     const pendingProductive=settings.goal!=='ccse'&&history.results.some(r=>r.mode==='assessment')?['writing','speaking'].find(kind=>!history.submissions.some(s=>s.kind===kind)):null;
     const category=pendingProductive||weakest?.id||(settings.goal==='ccse'?'government':'reading');
     const done = new Set(db.prepare('SELECT lesson_id FROM completions WHERE user_id=?').all(req.user.id).map(c => c.lesson_id));
     const selected=lessons.filter(l=>settings.goal==='both'||l.module===settings.goal);
-    const candidate = selected.find(l => !done.has(l.id) && l.category === category) || selected.find(l => !done.has(l.id));
+    const candidate = selected.find(l => !done.has(l.id) && l.category === (category==='rights'?'government':category)) || selected.find(l => !done.has(l.id));
     res.json({ settings, estimate, recommendation: { category: candidate?.category||category, lessonId: candidate?.id || null }, officialCalendar: { ccse: 'https://examenes.cervantes.es/es/ccse/cuando', dele: 'https://examenes.cervantes.es/es/dele/cuando' } });
   });
   app.put('/api/plan', requireUser, (req, res) => {
@@ -123,16 +125,17 @@ export function installLearning(app, db, { requireUser, questions, lessons, acce
   app.get('/api/review', requireUser, (req, res) => {
     const allowedModules=access.modules(req.user.id);if(!allowedModules.length||req.query.module&&!allowedModules.includes(req.query.module))return res.status(402).json({error:'subscription_required'});
     const states = new Map(db.prepare('SELECT * FROM review_state WHERE user_id=?').all(req.user.id).map(s => [s.item_id, s]));
-    const selected = items.filter(item => allowedModules.includes(item.module) && (!req.query.module || item.module === req.query.module) && (!req.query.kind || item.kind === req.query.kind));
+    const selected = items(req.user.id).filter(item => allowedModules.includes(item.module) && (!req.query.module || item.module === req.query.module) && (!req.query.kind || item.kind === req.query.kind));
     const due = selected.filter(item => states.has(item.id) && states.get(item.id).due_at <= clock().toISOString()).sort((a, b) => states.get(a.id).due_at.localeCompare(states.get(b.id).due_at));
     const fresh = selected.filter(item => !states.has(item.id));
-    res.json({ cards: [...due, ...fresh].slice(0, 10).map(item => ({ ...item, state: states.get(item.id) || null })), dueCount: due.length, newCount: fresh.length, learningCount: states.size, nextDue: selected.map(item => states.get(item.id)?.due_at).filter(d => d && d > clock().toISOString()).sort()[0] || null });
+    res.json({ cards: [...due, ...fresh].slice(0, 10).map(item => ({ ...item, state: states.get(item.id) || null })), dueCount: due.length, newCount: fresh.length, learningCount: selected.filter(item=>states.has(item.id)).length, nextDue: selected.map(item => states.get(item.id)?.due_at).filter(d => d && d > clock().toISOString()).sort()[0] || null });
   });
   app.post('/api/review/:id/rate', requireUser, (req, res) => {
-    const item = items.find(item => item.id === req.params.id);
+    const item = items(req.user.id).find(item => item.id === req.params.id);
     if (!item || !['again', 'hard', 'good', 'easy'].includes(req.body.rating)) return res.status(400).json({ error: 'invalid_review' });
     if(!access.has(req.user.id,item.module))return res.status(402).json({error:'subscription_required',module:item.module});
-    res.json(record(req.user.id, item.id, item.kind, req.body.rating));
+    res.json(record(req.user.id, item.id, item.factId?'fact':item.kind, req.body.rating));
   });
-  return { record, list, getSettings };
+  app.post('/api/learning-steps/:id',requireUser,(req,res)=>{if(req.params.id!=='ccse-manual-2026')return res.status(400).json({error:'invalid_review'});db.prepare('INSERT OR IGNORE INTO learning_steps VALUES (?,?,?)').run(req.user.id,req.params.id,clock().toISOString());res.json({ok:true});});
+  return { record, list, getSettings, facts };
 }

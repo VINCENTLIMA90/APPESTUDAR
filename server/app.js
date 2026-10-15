@@ -1,9 +1,9 @@
 import express from 'express';
 import { DatabaseSync } from 'node:sqlite';
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { lessons, questions, tasks, languages, officialSources } from './content.js';
+import { lessons, tasks, languages, officialSources } from './content.js';
 import { evaluateAI } from './ai.js';
 import { extractMaterials, materialFingerprint } from './sources.js';
 import { installLearning, skillSummary, studyDate } from './learning.js';
@@ -12,9 +12,12 @@ import { installTutor } from './tutor.js';
 import { installBilling } from './billing.js';
 import {installAccess} from './access.js';
 import {installAccounts} from './accounts.js';
+import {installQuestionBank} from './question-bank.js';
+import {installQuizzes} from './quizzes.js';
+import {installGoogle} from './google.js';
 const allTasks = Object.fromEntries(Object.entries({ ...tasks, ...examTasks }).map(([id, task]) => [id, { ...task, kind: task.kind || id }]));
 
-export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, tutor, sourceFetch = fetch, billingConfig, billingFetch, aiConfig, emailConfig, emailSend, logger, clock } = {}) {
+export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, tutor, sourceFetch = fetch, billingConfig, billingFetch, aiConfig, emailConfig, emailSend, logger, clock, googleConfig, googleFetch } = {}) {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path.join(dataDir, 'rumbo.sqlite'));
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
@@ -27,6 +30,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   if (!db.prepare('PRAGMA table_info(sources)').all().some(c => c.name === 'materials')) db.exec("ALTER TABLE sources ADD COLUMN materials TEXT NOT NULL DEFAULT '[]'; UPDATE sources SET fingerprint=NULL, verified_at=NULL, changed_at=NULL");
   for (const column of ['task_id', 'exam_id']) if (!db.prepare('PRAGMA table_info(submissions)').all().some(c => c.name === column)) db.exec(`ALTER TABLE submissions ADD COLUMN ${column} TEXT`);
   for (const source of officialSources) db.prepare('INSERT OR IGNORE INTO sources(id) VALUES (?)').run(source.id);
+  const bank=installQuestionBank(db);bank.synchronize(undefined,{lessons});
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy',1);
@@ -61,12 +65,13 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   function requireUser(req,res,next){if(!req.user)return res.status(401).json({error:req.sessionIssue||'login_required'});next();}
   const access=installAccess(db,billing,{...(aiConfig?{config:aiConfig}:{}),...(clock?{clock}:{})});
   billing.routes();
-  app.get('/api/access',requireUser,(req,res)=>res.json({...access.summary(req.user.id),emailAvailable:accounts.emailAvailable}));
+  app.get('/api/access',requireUser,(req,res)=>res.json({...access.summary(req.user.id),emailAvailable:accounts.emailAvailable,email:accounts.status(req.user.id)}));
   app.use('/api/exams',requireUser,access.guard('dele'));
-  const learning = installLearning(app, db, { requireUser, questions, lessons, access });
+  const learning = installLearning(app, db, { requireUser, bank, lessons, access, ...(clock?{clock}:{}) });
+  installGoogle(app,db,{accounts,limit,languages,secure,...(googleConfig?{config:googleConfig}:{}),...(googleFetch?{requester:googleFetch}:{}),...(clock?{clock}:{})});
   const exams = installExams(app, db, { requireUser, sourceFetch });
   installTutor(app, db, { requireUser, access, ...(tutor ? { ai:tutor } : {}) });
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok', version:'0.4.0' }));
+  app.get('/api/health', (_req, res) => res.json({ status: 'ok', version:'0.5.0' }));
   app.get('/api/catalog', (req, res) => res.json({ lessons:billing.catalog(lessons,req.user?.id), tasks:req.user?Object.fromEntries(Object.entries(allTasks).filter(([id])=>access.has(req.user.id,'dele')||['writing','speaking'].includes(id))):{}, model, languages,planLimits:access.config.limits }));
   app.get('/api/lessons/:id',requireUser,(req,res)=>{
     const lesson=lessons.find(l=>l.id===req.params.id);
@@ -91,7 +96,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     while (activeDays.includes(studyDate(cursor))) { streak++; cursor.setUTCDate(cursor.getUTCDate() - 1); }
     const skills = skillSummary(results, submissions);
     const badges = [completed.length > 0 && 'firstLesson', results.length > 0 && 'firstTest', activeDays.length >= 7 && 'sevenDays', reviews.length >= 10 && 'tenReviews', skills.filter(s => ['reading','listening','writing','speaking'].includes(s.id)).every(s => s.count > 0) && 'fourSkills'].filter(Boolean);
-    res.json({ completed, results, submissions, activeDays, streak, skills, badges, reviewCount: reviews.length });
+    res.json({ completed, results, submissions, activeDays, streak, skills, badges, reviewCount: reviews.length, facts:learning.facts.mastery(req.user.id), learningSteps:db.prepare('SELECT step_id,completed_at FROM learning_steps WHERE user_id=?').all(req.user.id) });
   });
   app.post('/api/lessons/:id/complete', requireUser, (req, res) => {
     const lesson=lessons.find(l=>l.id===req.params.id);
@@ -100,58 +105,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     db.prepare('INSERT OR IGNORE INTO completions VALUES (?,?,?)').run(req.user.id, req.params.id, new Date().toISOString());
     res.json({ ok: true });
   });
-  app.post('/api/quizzes', requireUser, (req, res) => {
-    const { module, mode } = req.body;
-    if (!['ccse', 'dele'].includes(module) || !['practice', 'simulation', 'assessment', 'review'].includes(mode)) return res.status(400).json({ error: 'invalid_quiz' });
-    if(mode!=='assessment'&&mode!=='simulation'&&!access.has(req.user.id,module))return res.status(402).json({error:'subscription_required',module});
-    const shuffle = xs => { const items = [...xs]; for (let i = items.length - 1; i > 0; i--) { const j = randomInt(i + 1); [items[i], items[j]] = [items[j], items[i]]; } return items; };
-    let pool = questions.filter(q => q.module === module);
-    if (mode === 'review') {
-      const errors = new Map();
-      const history = db.prepare('SELECT result FROM quizzes WHERE user_id=? AND result IS NOT NULL ORDER BY created_at ASC').all(req.user.id);
-      for (const r of history) for (const a of JSON.parse(r.result).answers) errors.set(a.id, !a.isCorrect);
-      pool = pool.filter(q => errors.get(q.id));
-      if (!pool.length) return res.status(400).json({ error: 'no_errors' });
-    }
-    let selected;
-    if (mode === 'assessment') selected = ['reading', 'listening'].flatMap(c => shuffle(questions.filter(q => q.category === c)).slice(0, 4)).concat(shuffle(questions.filter(q => q.module === 'ccse')).slice(0, 4));
-    else if (module === 'ccse' && mode === 'simulation') selected = shuffle(pool.filter(q => q.category === 'government' && q.options.length === 3)).slice(0, 10)
-      .concat(shuffle(pool.filter(q => q.category === 'government' && q.options.length === 2)).slice(0, 3),
-        shuffle(pool.filter(q => q.category === 'geography')).slice(0, 2),
-        shuffle(pool.filter(q => q.category === 'culture')).slice(0, 3),
-        shuffle(pool.filter(q => q.category === 'society')).slice(0, 7));
-    else if (module === 'dele' && mode === 'simulation') selected = ['reading', 'listening'].flatMap(c => shuffle(pool.filter(q => q.category === c)).slice(0, 8));
-    else selected = shuffle(pool).slice(0, 10);
-    const id = randomBytes(16).toString('hex');
-    db.exec('BEGIN IMMEDIATE');
-    try{
-      if(mode==='simulation'&&!access.claimTrial(req.user.id,module,id)){db.exec('ROLLBACK');return res.status(402).json({error:'subscription_required',module});}
-      db.prepare('INSERT INTO quizzes VALUES (?,?,?,?,?,?,NULL)').run(id, req.user.id, module, mode, JSON.stringify(selected.map(q=>q.id)),new Date().toISOString());db.exec('COMMIT');
-    }catch(error){db.exec('ROLLBACK');throw error;}
-    res.status(201).json({ id, module, mode,startedAt:new Date().toISOString(), minutes: mode === 'simulation' ? module === 'ccse' ? 45 : 35 : null, questions: selected.map(({correct,explanation,...q})=>({...q,...(q.audio?{audioSrc:'/audio/'+q.id+'.mp3'}:{})})) });
-  });
-  app.post('/api/quizzes/:id/submit', requireUser, (req, res) => {
-    const quiz = db.prepare('SELECT * FROM quizzes WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
-    if (!quiz) return res.status(404).json({ error: 'not_found' });
-    if(!access.quizAllowed(req.user.id,quiz))return res.status(402).json({error:'subscription_required',module:quiz.module});
-    if (quiz.result) return res.json(JSON.parse(quiz.result));
-    if(quiz.mode==='simulation'&&Date.now()>Date.parse(quiz.created_at)+(quiz.module==='ccse'?45:35)*60000+10000)return res.status(410).json({error:'quiz_expired'});
-    const ids = JSON.parse(quiz.question_ids);
-    const answers = req.body.answers;
-    if (!Array.isArray(answers) || answers.length !== ids.length || answers.some(a => a !== null && (!Number.isInteger(a) || a < 0 || a > 2))) return res.status(400).json({ error: 'invalid_answers' });
-    if (ids.some(id => !questions.some(q => q.id === id))) return res.status(409).json({ error: 'quiz_content_changed' });
-    const graded = ids.map((id, i) => { const q = questions.find(q => q.id === id); return { ...q, selected: answers[i], isCorrect: answers[i] === q.correct, optionExplanations: q.options.map((option, n) => n === q.correct ? q.explanation : `«${option}» no corresponde al dato solicitado. ${q.explanation}`) }; });
-    const score = graded.filter(q => q.isCorrect).length;
-    const skills = Object.fromEntries([...new Set(graded.map(q => q.category))].map(c => { const group = graded.filter(q => q.category === c); return [c, { correct: group.filter(q => q.isCorrect).length, total: group.length }]; }));
-    const result = { id: quiz.id, module: quiz.module, mode: quiz.mode, score, total: ids.length, percent: Math.round(score / ids.length * 100), skills, answers: graded, finishedAt: new Date().toISOString() };
-    db.exec('BEGIN');
-    try {
-      db.prepare('UPDATE quizzes SET result=? WHERE id=?').run(JSON.stringify(result), quiz.id);
-      for (const answer of graded) learning.record(req.user.id, answer.id, 'question', answer.isCorrect ? 'good' : 'again', false);
-      db.exec('COMMIT');
-    } catch(error) { db.exec('ROLLBACK'); throw error; }
-    res.json(result);
-  });
+  installQuizzes(app,db,{requireUser,bank,billing,lessons,access,facts:learning.facts,...(clock?{clock}:{})});
   app.post('/api/submissions', requireUser, (req, res) => {
     const { kind, text = '', audio, mime = '', rubric = [], task_id = kind, exam_id = null, purpose='practice' } = req.body;
     if (!['writing','speaking'].includes(kind) || !allTasks[task_id] || allTasks[task_id].kind !== kind || typeof text !== 'string' || text.length > 12000 || !Array.isArray(rubric) || rubric.some(v => !Number.isInteger(v) || v < 0 || v > 3) || rubric.length > 4) return res.status(400).json({ error: 'invalid_submission' });
@@ -203,7 +157,8 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     const reviews = db.prepare('SELECT item_id,kind,interval_days,repetitions,lapses,due_at,updated_at FROM review_state WHERE user_id=?').all(req.user.id);
     const examAttempts = db.prepare('SELECT * FROM exam_attempts WHERE user_id=?').all(req.user.id);
     const conversations = db.prepare('SELECT * FROM tutor_conversations WHERE user_id=?').all(req.user.id).map(c=>({...c,messages:db.prepare('SELECT role,content,created_at FROM tutor_messages WHERE conversation_id=? ORDER BY rowid').all(c.id)}));
-    res.attachment('rumbo-progress.json').json({ user: req.user, completions, quizzes, submissions, plan, reviews, examAttempts, conversations, billing:billing.summary(req.user.id) });
+    const factAttempts=db.prepare('SELECT fact_id,question_id,correct,study_day,created_at FROM fact_attempts WHERE user_id=?').all(req.user.id),learningSteps=db.prepare('SELECT step_id,completed_at FROM learning_steps WHERE user_id=?').all(req.user.id);
+    res.attachment('rumbo-progress.json').json({ factAttempts,learningSteps,user: req.user, completions, quizzes, submissions, plan, reviews, examAttempts, conversations, billing:billing.summary(req.user.id) });
   });
   app.delete('/api/me', requireUser, async (req, res) => {
     try { await billing.cancelForDeletion(req.user.id); }
@@ -244,5 +199,5 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   });
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use((error, _req, res, _next) => { res.status(error.type === 'entity.too.large' ? 413 : error.type === 'entity.parse.failed' ? 400 : 500).json({ error: error.type === 'entity.too.large' ? 'too_large' : 'request_failed' }); });
-  return { app, db, checkSources };
+  return { app, db, bank, learning, checkSources };
 }

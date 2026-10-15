@@ -12,6 +12,8 @@ import { FullExamPage } from './FullExam';
 import { PlansPage } from './Plans';
 import { Welcome } from './Welcome';
 import {LockedFeature} from './Access';
+import {VerificationNotice,useResendCooldown} from './EmailNotice';
+import {initialStudyGoal} from './config/exam-requirements';
 import {LegalLinks,LegalPage,legalPages,AccountAction} from './Legal';
 
 const Context = createContext();
@@ -27,7 +29,7 @@ export default function App() {
   const [quiz, setQuiz] = useState(null), [result, setResult] = useState(null), [skill, setSkill] = useState(null);
   const [auth, setAuth] = useState(null), [authNext, setAuthNext] = useState(null), [mobile, setMobile] = useState(false);
   const [toast, setToast] = useState(null), [bootError, setBootError] = useState(false), [ready, setReady] = useState(false);
-  const [access,setAccess]=useState(null);
+  const [access,setAccess]=useState(null),[authOptions,setAuthOptions]=useState({google:false}),[trialGate,setTrialGate]=useState(false);
   const [accountAction]=useState(()=>{const params=new URLSearchParams(window.location.search);return ['reset','verify'].includes(params.get('account'))?{action:params.get('account'),token:params.get('token')||''}:null;});
   const [tutorContext,setTutorContext]=useState('');
   const t = (key,values) => translate(lang, key,values);
@@ -39,10 +41,11 @@ export default function App() {
   async function boot() {
     setBootError(false);
     try {
-      const [c, me] = await Promise.all([api('/catalog'), api('/me')]);
+      const [c, me, options] = await Promise.all([api('/catalog'), api('/me'),api('/auth/options')]);setAuthOptions(options);
       setCatalog(c); setUser(me.user);
       if (me.user) { setLang(me.user.language); await Promise.all([loadProgress(),loadAccess()]); }
       if(me.error==='session_replaced')notify(t('session_replaced'));
+      if(new URLSearchParams(window.location.search).get('authError')==='google_auth_failed'){notify(t('google_auth_failed'),true);window.history.replaceState({},'',window.location.pathname);}
       setReady(true);
     } catch { setBootError(true); }
   }
@@ -61,17 +64,17 @@ export default function App() {
   };
   const navigate = (destination, selectedModule) => {
     if (quiz && !window.confirm(t('abandon'))) return;
-    setQuiz(null); setResult(null); setSkill(null); setLesson(null); setLockedLesson(null); setPage(destination); setMobile(false);
+    setTrialGate(false);setQuiz(null); setResult(null); setSkill(null); setLesson(null); setLockedLesson(null); setPage(destination); setMobile(false);
     if (selectedModule) setModule(selectedModule);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  async function startQuiz(mode, selectedModule = module) {
+  async function startQuiz(mode, selectedModule = module,lessonId=null) {
     requireUser(async () => {
       try {
-        const data = await api('/quizzes', { mode, module: selectedModule });await loadAccess();
+        const data = await api('/quizzes', { mode, module: selectedModule,...(lessonId?{lessonId}:{}) });await loadAccess();
         setQuiz(data); setResult(null); setPage('tests'); setSkill(null); setLesson(null); setMobile(false);
         window.scrollTo({ top: 0 });
-      } catch (error) { if(error.status===402)navigate('plans');else notify(t(error.message), true); }
+      } catch (error) { if(error.status===402)navigate('plans');else if(error.message==='trial_email_required'){setPage('tests');setTrialGate(true);}else notify(t(error.message), true); }
     });
   }
   function openSkill(kind,taskId=kind,existing=null,purpose='practice') { requireUser(() => { setSkill({kind,taskId,existing,purpose}); setPage('tests'); setQuiz(null); setResult(null); setLesson(null); }); }
@@ -82,10 +85,11 @@ export default function App() {
   }
   async function changeLanguage(value) { setLang(value); if (user) { try { await api('/me', { language: value }, 'PATCH'); } catch (error) { notify(t(error.message), true); } } }
   async function logout() { try { await api('/auth/logout', {}); setUser(null); setProgress(emptyProgress); setAccess(null); navigate('dashboard'); await loadCatalog(); } catch (error) { notify(t(error.message), true); } }
-  const context = { lang, t, user, catalog, progress, loadProgress, loadCatalog, notify, navigate, module, setModule, startQuiz, openSkill, openLesson, requireUser, openAuth:setAuth, access,loadAccess,hasModule, changeLanguage,askTutor,tutorContext };
+  const context = { lang, t, user, catalog, progress, loadProgress, loadCatalog, notify, navigate, module, setModule, startQuiz, openSkill, openLesson, requireUser, openAuth:setAuth, access,loadAccess,hasModule, authOptions, changeLanguage,askTutor,tutorContext };
   let content;
   if (!ready) content = <div className="loading-state">{bootError ? <><p>{t('error')}</p><button className="button primary" onClick={boot}>{t('retry')}</button></> : <><span className="spinner" />{t('loading')}</>}</div>;
   else if(accountAction)content=<AccountAction {...accountAction}/>;
+  else if(trialGate)content=<VerificationNotice trial/>;
   else if (quiz) content = <Quiz quiz={quiz} onFinish={async data => { setResult(data); setQuiz(null); await Promise.all([loadProgress(),loadAccess()]); }} onExit={() => navigate('tests')} />;
   else if (result) content = <QuizResult result={result} onBack={() => setResult(null)} />;
   else if (skill) content = <SkillPractice key={skill.taskId} kind={skill.kind} taskId={skill.taskId} existing={skill.existing} purpose={skill.purpose} onBack={() => setSkill(null)} />;
@@ -107,7 +111,7 @@ export default function App() {
     </aside>}
     <div className={'app-body '+(!user?'visitor-body':'')}>
       <header className="topbar"><div className="topbar-start">{!user&&<button className="brand-button" aria-label="Rumbo" onClick={()=>navigate('dashboard')}><Brand/></button>}{user&&<button className="icon-button mobile-menu" aria-label={t('workspace')} onClick={() => setMobile(true)}><Menu size={23} /></button>}<span className="breadcrumb"><span className="mini-flag" />{t('journey')}</span></div><div className="topbar-actions">{user && <span className="online-indicator"><span />{t('sessionActive')}</span>}<label className="language-picker"><Globe2 size={17} /><select aria-label={t('language')} value={lang} onChange={e => changeLanguage(e.target.value)}>{Object.entries(locales).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select><ChevronDown size={13} /></label>{!user&&<button className="button outline visitor-login" onClick={()=>setAuth('login')}>{t('login')}</button>}{user ? <span className="avatar top-avatar">{user.name.slice(0, 1).toUpperCase()}</span> : <button className="button small outline auth-top" onClick={() => setAuth('register')}>{t('register')}<ArrowRight size={15} /></button>}</div></header>
-      <main id="main" className="main-content" tabIndex={-1}>{content}<footer className="footer"><Brand small /><LegalLinks/><span>{t('ownContent')}</span><span className="footer-heart">hecho con cariño <span>✦</span></span></footer></main>
+      <main id="main" className="main-content" tabIndex={-1}>{user&&!user.email_verified_at&&page==='dashboard'&&<VerificationNotice/>}{content}<footer className="footer"><Brand small /><LegalLinks/><span>{t('ownContent')}</span><span className="footer-heart">hecho con cariño <span>✦</span></span></footer></main>
     </div>
     {auth && <Auth mode={auth} setMode={setAuth} onClose={() => { setAuth(null); setAuthNext(null); }} onSuccess={async data => { setUser(data.user); setLang(data.user.language); await Promise.all([loadProgress(),loadCatalog(),loadAccess()]); const next = authNext; setAuth(null); setAuthNext(null); next?.(); }} />}
     {toast && <div className={'toast ' + (toast.error ? 'toast-error' : '')} role={toast.error ? 'alert' : 'status'}>{toast.error ? <CircleHelp size={19} /> : <Check size={19} />}<span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label={t('close')}><X size={16} /></button></div>}
@@ -115,17 +119,17 @@ export default function App() {
 }
 
 function Auth({ mode, setMode, onClose, onSuccess }) {
-  const { t, lang } = useApp();
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const { t, lang,authOptions } = useApp();
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''),[recoveryEmail,setRecoveryEmail]=useState('');const cooldown=useResendCooldown();
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('');
     const data = Object.fromEntries(new FormData(event.target));
-    try {if(mode==='forgot'){await api('/auth/forgot-password',data);setError(t('email_request_received'));}else await onSuccess(await api('/auth/' + mode, { ...data, language: lang })); } catch (error) { setError(t(error.message)); } finally { setBusy(false); }
+    try {if(mode==='forgot'){await api('/auth/forgot-password',data);setRecoveryEmail(data.email);cooldown.start();}else await onSuccess(await api('/auth/' + mode, { ...data, language: lang,...(mode==='register'?{initialGoal:initialStudyGoal()}:{}) })); } catch (error) { setError(t(error.message)); } finally { setBusy(false); }
   }
-  return <Modal onClose={onClose} title={t(mode==='forgot'?'forgotPassword':mode)} t={t}><Brand /><h2>{t(mode==='forgot'?'forgotPassword':mode)}</h2><p className="muted">{t('authBody')}</p><form onSubmit={submit}>
+  return <Modal onClose={onClose} title={t(mode==='forgot'?'forgotPassword':mode)} t={t}><Brand /><h2>{t(mode==='forgot'?'forgotPassword':mode)}</h2><p className="muted">{t('authBody')}</p>{authOptions.google&&mode!=='forgot'&&<a className="button outline full google-login" href={'/api/auth/google?'+new URLSearchParams({language:lang,goal:initialStudyGoal()})}>{t('continueGoogle')}</a>}<form onSubmit={submit}>
     {mode === 'register' && <label>{t('name')}<input name="name" autoComplete="name" required maxLength={70} /></label>}
     <label>{t('email')}<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
     {mode!=='forgot'&&<label>{t('password')}<input name="password" type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} minLength={mode === 'register' ? 10 : 1} maxLength={128} required placeholder={mode === 'register' ? t('passwordHint') : ''} /></label>}
-    {error && <p className="inline-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy}>{t(busy ? 'loading' : mode==='forgot'?'sendRecovery':mode)}</button>
-  </form>{mode==='register'&&<LegalLinks onNavigate={onClose}/>}<button type="button" className="text-button" onClick={()=>{setMode('forgot');setError('');}}>{t('forgotPassword')}</button><button className="text-button auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>{t(mode === 'login' ? 'register' : 'login')}<ArrowRight size={16} /></button></Modal>;
+    {error && <p className="inline-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy||(mode==='forgot'&&cooldown.seconds>0)}>{t(busy ? 'loading' : mode==='forgot'?'sendRecovery':mode)}</button>
+  </form>{mode==='forgot'&&recoveryEmail&&<div className="email-notice" role="status"><p>{t('emailSentNotice')}</p><button className="button outline" disabled={busy||cooldown.seconds>0} onClick={async()=>{setBusy(true);try{await api('/auth/forgot-password',{email:recoveryEmail});cooldown.start();}catch(e){setError(t(e.message));}finally{setBusy(false);}}}>{t(cooldown.seconds?'resendCountdown':'resend',{count:cooldown.seconds})}</button></div>}{mode==='register'&&<LegalLinks onNavigate={onClose}/>}<button type="button" className="text-button" onClick={()=>{setMode('forgot');setError('');}}>{t('forgotPassword')}</button><button className="text-button auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>{t(mode === 'login' ? 'register' : 'login')}<ArrowRight size={16} /></button></Modal>;
 }

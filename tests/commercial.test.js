@@ -27,6 +27,8 @@ test('free account: four lessons, full assessment, exactly one simulation per mo
  const assessment=await f.req('/quizzes',{module:'ccse',mode:'assessment'},a.cookie);assert.equal(assessment.status,201);assert.equal(assessment.data.questions.length,12);
  for(const kind of ['writing','speaking'])assert.equal((await f.req('/submissions',{kind,text:'Me llamo Alex.',purpose:'assessment'},a.cookie)).status,201);
  assert.equal((await f.req('/submissions',{kind:'writing',text:'Hola.'},a.cookie)).status,402);
+ assert.equal((await f.req('/quizzes',{module:'ccse',mode:'simulation'},a.cookie)).data.error,'trial_email_required');
+ await f.req('/auth/verify-email',{token:f.token()});
  for(const [module,count,minutes] of [['ccse',25,45],['dele',16,35]]){
   const trials=await Promise.all([f.req('/quizzes',{module,mode:'simulation'},a.cookie),f.req('/quizzes',{module,mode:'simulation'},a.cookie)]);assert.deepEqual(trials.map(r=>r.status).sort(),[201,402]);const quiz=trials.find(r=>r.status===201).data;assert.equal(quiz.questions.length,count);assert.equal(quiz.minutes,minutes);
   assert.equal((await f.req('/quizzes/'+quiz.id+'/submit',{answers:Array(count).fill(0)},a.cookie)).status,200);

@@ -1,92 +1,101 @@
-# Entrega 0.4.0 — acesso, IA, conta e apresentação
+# Entrega 0.5.0 — oferta, factos, email e Google
 
-## Resultado e validação
+## Resultado
 
-- Subscrição desbloqueia todas as ferramentas do módulo. Quatro aulas, avaliação completa e uma tentativa de simulado por módulo são gratuitas com conta. A API aplica os bloqueios.
-- IA exclusivamente no servidor com consentimento, saldo e quotas por ciclo; ausência de configuração apresentada como indisponibilidade temporária.
-- Sessões limitadas, recuperação de palavra-passe, verificação de email, preços e consentimento de checkout implementados.
-- Visitantes sem barra lateral; sete línguas e RTL; MP3 preparados com transcrição de recurso; três páginas legais provisórias.
-- `npm test`: **44 testes aprovados**, incluindo preservação de dados numa base antiga após dois arranques.
-- `npm run test:e2e`: **17 testes aprovados**, incluindo compilação de produção, 375 px, contraste e árabe.
-- Todas as entradas dos ficheiros i18n complementares têm sete traduções. Inspeção visual da apresentação móvel PT-PT e árabe efetuada.
-- Gerador de voz validado apenas com `--dry-run`: plano de 16 ficheiros, sem gerar MP3 nem contactar o serviço.
-- Não houve chamadas reais a IA, email, voz ou pagamentos nos testes. O banco de perguntas CCSE e o alojamento não foram alterados.
+Oferta grátis completa na apresentação, FAQ, planos e bloqueios; recomendação local por nacionalidade com destaque do plano; banco mestre editável fora do código; testes de tema com feedback imediato; opções baralhadas e correção guardadas no servidor; revisão por facto e domínio por variantes/dias diferentes; manual externo com conclusão; consentimentos separados; reenvio/estado de email; Google OAuth/OIDC no servidor.
+
+Preços, quotas de IA, regras Stripe além do consentimento, DATA_DIR, DATA_PERSISTENT e plano de alojamento foram mantidos.
+
+## Verificações
+
+- **66 testes da API aprovados**, sem testes ignorados: importação real pelo CLI e rejeição de CSV inválido sem mudar a base, visibilidade por estado, simulador só exame mesmo com alternativas aprovadas, temas, domínio e migração do histórico, email, consentimentos e Google simulado.
+- **23 testes Playwright aprovados**, sem testes ignorados: compilação de produção, três respostas sobre nacionalidade, sete línguas/RTL, 375 px/contraste, localStorage indisponível, tema com feedback, duas caixas, reenvio com contagem, manual e opção Google.
+- Inspeção visual da página de apresentação; todas as entradas i18n complementares têm sete traduções.
+- Exportação real dos rascunhos validada. As fontes oficiais e o Render devolveram bloqueio do proxy (CONNECT 403); não foi possível confirmar o PDF nem a publicação pública.
+- Google, email, IA e Stripe foram simulados nos testes; não foram usadas credenciais reais nem efetuadas cobranças/envios reais. O manual CCSE não foi descarregado ou extraído.
+
+## Conteúdo criado
+
+As 103 perguntas existentes mantêm os IDs, o texto e o estado aprovado. Cada uma é um facto com variante exame. As sete V/F são classificadas em direitos/deveres para preservar a tarefa 2.
+
+| Categoria nova | Factos | Variantes | Estado |
+| --- | ---: | ---: | --- |
+| CCSE — Governo e instituições | 30 | 60 | rascunho |
+| CCSE — Direitos e deveres | 30 | 60 | rascunho |
+| CCSE — Geografia | 30 | 60 | rascunho |
+| CCSE — Cultura | 30 | 60 | rascunho |
+| CCSE — Sociedade e vida quotidiana | 30 | 60 | rascunho |
+| **Subtotal CCSE solicitado** | **150** | **300** | **rascunho** |
+| DELE — Escrita, cobertura adicional de aulas | 25 | 25 | rascunho |
+| DELE — Oralidade, cobertura adicional de aulas | 20 | 20 | rascunho |
+| **Total novo** | **195** | **345** | **rascunho** |
+
+O mestre tem **298 factos e 448 variantes**, das quais só **103 estão aprovadas**. Direitos/deveres usa `exame` V/F e uma `invertida` de três opções para conservar o formato da tarefa 2. As outras categorias CCSE usam `exame` de três opções e V/F. Esta é a exceção ao formato de três opções necessária para manter a estrutura anterior do simulador.
 
 ## Alterações por ficheiro
 
 | Ficheiro | Alteração |
 | --- | --- |
-| [BILLING.md](BILLING.md) | Modelo de acesso integral, quotas, email verificado, consentimento e preços com IVA. |
-| [CONTENT.md](CONTENT.md) | Limitações pedagógicas, áudio MP3 e regras de acesso atualizadas. |
-| [DEPLOY.md](DEPLOY.md) | Atualização do serviço existente e requisitos de armazenamento permanente antes de cobrar. |
-| [README.md](README.md) | Execução, testes, acesso gratuito/pago, IA, conta, áudio e dependências externas. |
-| [ENVIRONMENT.md](ENVIRONMENT.md) | Todas as variáveis de configuração, omissões, segredos e destinos de rede. |
-| [package.json](package.json) | Versão 0.4.0. |
-| [package-lock.json](package-lock.json) | Versão do pacote sincronizada, sem novas dependências. |
-| [server/access.js](server/access.js) | Direitos por módulo, tentativa gratuita única, reservas e quotas de IA por ciclo. |
-| [server/accounts.js](server/accounts.js) | Sessões limitadas, tokens por hash, recuperação/verificação e email Resend/Postmark. |
-| [server/ai.js](server/ai.js) | Configuração de modelos no servidor; removidos os modelos predefinidos. |
-| [server/app.js](server/app.js) | Integração de conta/acesso, bloqueios 402, consentimento e correções com contagem atómica. |
-| [server/billing.js](server/billing.js) | Migração de período, IVA incluído, verificação de email e registo do consentimento. |
-| [server/content.js](server/content.js) | Texto da aula auditiva DELE alinhado com os MP3 e transcrição de recurso. |
-| [server/curriculum.js](server/curriculum.js) | Descrição de áudio DELE atualizada. |
-| [server/expanded-curriculum.js](server/expanded-curriculum.js) | Descrições de duas atividades auditivas DELE atualizadas. |
-| [server/index.js](server/index.js) | Trust proxy 1 e serviço estático dos MP3, com 404 para ficheiros em falta. |
-| [server/learning.js](server/learning.js) | Plano e revisão limitados aos módulos ativos. |
-| [server/tutor.js](server/tutor.js) | Conversas por módulo, IA do servidor, consentimento e consumo atómico de quota. |
-| [scripts/generate-audio.js](scripts/generate-audio.js) | Gerador Azure Speech com vozes de Espanha/América Latina e modo --dry-run. |
-| [public/audio/.gitkeep](public/audio/.gitkeep) | Diretório reservado aos MP3; nenhum áudio real gerado nesta entrega. |
-| [src/Access.jsx](src/Access.jsx) | Componentes de cadeado, ligação aos planos, saldo de IA e renovação. |
-| [src/AudioPractice.jsx](src/AudioPractice.jsx) | Leitor MP3 com transcrição se o ficheiro faltar. |
-| [src/Legal.jsx](src/Legal.jsx) | Três páginas legais provisórias, ligações e confirmação de tokens de conta. |
-| [src/App.jsx](src/App.jsx) | Cabeçalho para visitantes, acessos, recuperação, páginas legais e aviso de sessão substituída. |
-| [src/Learning.jsx](src/Learning.jsx) | Plano e contagem do exame respeitam os direitos atuais. |
-| [src/Plans.jsx](src/Plans.jsx) | Benefícios, IVA, cancelamento, poupança e caixa obrigatória antes do checkout. |
-| [src/Quiz.jsx](src/Quiz.jsx) | MP3 em exercícios, tempo desde o início no servidor e continuação da avaliação gratuita. |
-| [src/Settings.jsx](src/Settings.jsx) | Removida a configuração de chaves; saldo de IA e verificação de email. |
-| [src/SkillPractice.jsx](src/SkillPractice.jsx) | Acesso pago/avaliação gratuita, consentimento por envio, saldo e correções incluídas. |
-| [src/Tutor.jsx](src/Tutor.jsx) | Removidas credenciais pessoais; consentimento por envio, saldo e serviço indisponível. |
-| [src/Welcome.jsx](src/Welcome.jsx) | Benefícios e preços alinhados com os planos atuais. |
-| [src/api.js](src/api.js) | Propaga informação dos erros e notifica substituição de sessão. |
-| [src/components.jsx](src/components.jsx) | Rótulo de acesso bloqueado consistente. |
-| [src/i18n-commerce.js](src/i18n-commerce.js) | Textos comerciais sem referência à configuração de chaves pessoais. |
-| [src/i18n-next.js](src/i18n-next.js) | Novos textos de acesso, quotas, emails, conta, áudio e páginas legais nas sete línguas. |
-| [src/i18n.js](src/i18n.js) | Textos de IA/consentimento atualizados e antigas opções de chaves removidas. |
-| [src/pages.jsx](src/pages.jsx) | Cadeados visíveis, tentativa única, avaliação e atividades com MP3. |
-| [src/styles.css](src/styles.css) | Cabeçalho visitante, responsividade, cadeados, saldo, áudio, consentimento e páginas legais. |
-| [tests/helpers.js](tests/helpers.js) | Direitos e fornecedores fictícios usados apenas nos testes, sem endpoint de ativação. |
-| [tests/commercial.test.js](tests/commercial.test.js) | Novos testes de planos, quotas, sessões, email, tokens e migrações de dados antigos. |
-| [tests/commercial.spec.js](tests/commercial.spec.js) | Novos testes de visitante móvel/RTL, bloqueios, planos e substituição de sessão. |
-| [tests/ai.test.js](tests/ai.test.js) | Protocolos dos três fornecedores com modelos fictícios explicitamente configurados. |
-| [tests/api.test.js](tests/api.test.js) | Testes adaptados aos direitos de acesso e consentimento. |
-| [tests/billing.test.js](tests/billing.test.js) | Fixtures de preço com IVA, email verificado e consentimento no checkout. |
-| [tests/browser.spec.js](tests/browser.spec.js) | Percursos com direitos de teste e IA incluída sem introdução de credenciais. |
-| [tests/learning.test.js](tests/learning.test.js) | Plano, revisão e tutor com direitos e IA de teste no servidor. |
-| [tests/ux.spec.js](tests/ux.spec.js) | Mantidos os testes de contraste, línguas, totais, 375 px e data do exame com acesso válido. |
-| [ALTERACOES.md](ALTERACOES.md) | Relatório desta entrega, ficheiro a ficheiro, verificações e pendências. |
+| [ALTERACOES.md](ALTERACOES.md) | Relatório desta entrega, alterações por ficheiro, números e pendências. |
+| [BILLING.md](BILLING.md) | Oferta completa, email para tentativas grátis e registo independente dos dois consentimentos; preços/regras Stripe preservados. |
+| [CONTENT.md](CONTENT.md) | Proveniência, rascunhos, variantes, limites editoriais e manual apenas externo. |
+| [DEPLOY.md](DEPLOY.md) | Versão 0.5.0, validação do CSV, migrações, Google/email e publicação no serviço existente. |
+| [ENVIRONMENT.md](ENVIRONMENT.md) | GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET, redirecionamento e domínios necessários. |
+| [README.md](README.md) | Oferta, fluxo editorial, testes do tema, domínio de factos, email e configuração Google Cloud. |
+| [package.json](package.json) | Versão 0.5.0, mantendo dependências e comandos existentes. |
+| [package-lock.json](package-lock.json) | Versão sincronizada, sem novos pacotes. |
+| [content/questions.csv](content/questions.csv) | Mestre UTF-8/semicolon: 103 aprovadas migradas, 150 factos CCSE/300 variantes e 45 questões DELE em rascunho. |
+| [content/README.md](content/README.md) | Guia de edição/aprovação, colunas, exceção V/F, contagens por categoria e compatibilidade do histórico. |
+| [scripts/import-questions.js](scripts/import-questions.js) | Validação com erros por linha e importação atómica para DATA_DIR, incluindo --check sem escrita. |
+| [scripts/export-drafts.js](scripts/export-drafts.js) | Exportação dos rascunhos para revisão; protege o ficheiro de entrada de sobrescrita direta. |
+| [server/question-bank.js](server/question-bank.js) | Parser/validador CSV, estados editoriais, importação/sincronização e estabilidade dos IDs. |
+| [server/facts.js](server/facts.js) | Evidência por facto, seleção de variante diferente, domínio e migração dos agendamentos antigos. |
+| [server/quizzes.js](server/quizzes.js) | Apresentações baralhadas guardadas no servidor, teste do tema, simulador só exame e bloqueio por email. |
+| [server/google.js](server/google.js) | OAuth/OIDC servidor com PKCE, state, nonce, assinatura/audiência, ligação por email e sessões. |
+| [server/accounts.js](server/accounts.js) | Estado/falhas de email sem links/tokens, espera de reenvio, objetivo inicial e integração com Google. |
+| [server/app.js](server/app.js) | Banco e rotas novos, metadados de email, progresso/export por facto e versão de saúde 0.5.0. |
+| [server/billing.js](server/billing.js) | Duas aceitações persistidas com tipo, versão e data; mantém os registos anteriores. |
+| [server/content.js](server/content.js) | As perguntas passam a ser lidas do CSV; preserva aulas e tarefas. |
+| [server/curriculum.js](server/curriculum.js) | Retirada a definição em código das perguntas migradas; restantes aulas/tarefas preservadas. |
+| [server/learning.js](server/learning.js) | Revisão por facto, cinco categorias CCSE, objetivo inicial e conclusão do passo do manual. |
+| [src/Access.jsx](src/Access.jsx) | Ecrãs bloqueados comunicam toda a oferta grátis. |
+| [src/App.jsx](src/App.jsx) | Opções de autenticação, Google, objetivo inicial, recuperação com reenvio e aviso de verificação. |
+| [src/EmailNotice.jsx](src/EmailNotice.jsx) | Avisos de envio/falha, verificação e contagem de 60 segundos para reenviar. |
+| [src/StudyJourney.jsx](src/StudyJourney.jsx) | Passo externo do manual e mapa de factos dominados por categoria. |
+| [src/config/exam-requirements.js](src/config/exam-requirements.js) | Lista única de países, resposta local protegida por try/catch e URL/ano do manual. |
+| [src/Welcome.jsx](src/Welcome.jsx) | Quatro pontos grátis com ícones, três respostas sobre nacionalidade e destaque do plano recomendado. |
+| [src/Plans.jsx](src/Plans.jsx) | Duas caixas independentes, ligações legais e aviso de email; valores e quotas inalterados. |
+| [src/Settings.jsx](src/Settings.jsx) | Componente de verificação com estado do envio e reenvio. |
+| [src/Quiz.jsx](src/Quiz.jsx) | Feedback por resposta no tema e ligações factuais após a correção. |
+| [src/Learning.jsx](src/Learning.jsx) | Mapa de factos, fontes na revisão e passo do manual no plano CCSE. |
+| [src/pages.jsx](src/pages.jsx) | Teste do tema no fim da aula substitui as antigas perguntas inline; passo do manual no percurso CCSE. |
+| [src/i18n-commerce.js](src/i18n-commerce.js) | Oferta completa em sete línguas. |
+| [src/i18n-next.js](src/i18n-next.js) | Textos novos nas sete línguas: recomendação, factos, Google, email, manual e consentimentos. |
+| [src/styles.css](src/styles.css) | Lista grátis, recomendação, email, duas caixas, feedback, manual e mapa; mantém o estilo e RTL. |
+| [tests/facts.test.js](tests/facts.test.js) | CSV e CLI válidos/inválidos, estados, snapshots, variantes, domínio, migração, email e objetivo inicial. |
+| [tests/google.test.js](tests/google.test.js) | Fluxo simulado assinado, PKCE, ligação existente, conta nova, sessões e rejeições de tokens/state. |
+| [tests/journey.spec.js](tests/journey.spec.js) | Recomendação nas três respostas, sete línguas, armazenamento indisponível, tema, reenvio, consentimentos, manual e Google. |
+| [tests/api.test.js](tests/api.test.js) | Correção por conteúdo da opção para suportar baralhamento sem presumir índices fixos. |
+| [tests/billing.test.js](tests/billing.test.js) | Recusa de consentimento parcial e prova de duas versões/datas guardadas. |
+| [tests/browser.spec.js](tests/browser.spec.js) | Nova categoria de direitos/deveres e percurso da aula com teste de tema. |
+| [tests/commercial.spec.js](tests/commercial.spec.js) | Verifica as duas caixas independentes do checkout. |
+| [tests/commercial.test.js](tests/commercial.test.js) | Oferta grátis passa a testar verificação de email antes da única tentativa. |
 
-## Variáveis de ambiente
+## Novas variáveis
 
-A lista completa, com descrição e omissão, está em [ENVIRONMENT.md](ENVIRONMENT.md). Novas configurações:
+| Variável | Descrição |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | Identificador do cliente OAuth **Web application** criado na Google Cloud |
+| `GOOGLE_CLIENT_SECRET` | Segredo desse cliente, apenas no servidor |
 
-- `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`, `AI_TRANSCRIBE_MODEL`: fornecedor, segredo, modelo de correção/tutor e modelo de transcrição.
-- `AI_CCSE_CORRECTIONS_LIMIT` / `AI_CCSE_TUTOR_LIMIT`: 0 / 50 por ciclo.
-- `AI_DELE_CORRECTIONS_LIMIT` / `AI_DELE_TUTOR_LIMIT`: 30 / 300 por ciclo.
-- `AI_BOTH_CORRECTIONS_LIMIT` / `AI_BOTH_TUTOR_LIMIT`: 30 / 300 por ciclo.
-- `MAX_SESSIONS_PER_USER`: sessões simultâneas, 1 por omissão.
-- `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM`: serviço Resend/Postmark, segredo e remetente autorizado. Usam também a variável existente `APP_URL`.
-- `TTS_PROVIDER`, `TTS_API_KEY`, `TTS_REGION`, `TTS_VOICES`: serviço Azure, segredo, região e lista de vozes; utilizadas pelo script de geração.
+Usam a variável existente `APP_URL`; URI de redirecionamento exata: `APP_URL` + `/api/auth/google/callback`. Os passos estão no README. Sem configuração completa, o botão não aparece. Não são necessárias credenciais reais para os testes. `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` e restantes variáveis anteriores mantêm a finalidade; não houve alteração de valores neste ambiente ou no Render.
 
-Nenhum segredo pertence ao navegador ou a variáveis `VITE_`. Não foram configuradas chaves reais nesta entrega.
+## Pendências e decisões editoriais
 
-## O que depende do responsável pela aplicação
-
-1. **Publicação no Render:** se o auto-deploy não publicar, abrir `rumbo-demo → Manual Deploy → Deploy latest commit`. Confirmar estado Live e versão 0.4.0 em `/api/health`. A consulta ao serviço público foi bloqueada pelo proxy deste ambiente (CONNECT 403), pelo que não foi possível confirmar o deploy externo.
-2. **Armazenamento:** escolher e configurar posteriormente disco persistente pago no Render, cópias de segurança e recuperação **antes de ativar pagamentos**. `render.yaml`, `DATA_DIR` e `DATA_PERSISTENT` ficaram como estavam. A demonstração continua sujeita a perda de dados em reinícios/publicações.
-3. **Stripe:** criar conta e preços mensais com IVA incluído, configurar webhook e validar em modo de teste antes da ativação. Cobrança real permanece desativada.
-4. **Email:** criar conta Resend/Postmark, validar remetente/domínio e configurar variáveis. Sem serviço, a produção não envia mensagens nem escreve links de recuperação/verificação nos logs.
-5. **IA:** escolher fornecedor/modelos, configurar a chave no servidor e validar qualidade, disponibilidade e custos reais.
-6. **Áudio:** configurar Azure Speech, gerar/rever os 16 MP3 e incluí-los na publicação. Até lá, os exercícios mostram a transcrição quando o MP3 falta.
-7. **Jurista:** rever e finalizar termos, privacidade, cancelamento/desistência e consentimento de acesso imediato. Os textos estão marcados para revisão. A utilização do banco oficial CCSE continua pendente de decisão jurídica.
-
-O código por email para novo dispositivo não foi implementado, conforme pedido. Foram preparados o campo de dispositivo e tokens com finalidade para essa evolução.
+1. **Rever/aprovar os rascunhos:** confirmar fontes, factos, alternativas e ligações a aulas; preencher reviewed_at. Nada novo é publicado automaticamente. Nove aulas DELE (`d5`, `d17`–`d24`) ainda não têm cinco questões aprovadas: mostram o aviso de conteúdo insuficiente, até aprovar as 45 perguntas adicionais já preparadas. Portanto, a cobertura ativa de testes em todas as 48 aulas depende dessa aprovação editorial.
+2. **Domínio dos factos legados:** cada um dos 103 tem uma variante aprovada, como solicitado. Repetir a mesma não dá domínio; será preciso criar/aprovar uma segunda variante desse mesmo facto. A revisão troca de variante apenas quando outra aprovada existe.
+3. **Google:** criar cliente, configurar as duas variáveis e APP_URL no Render, testar o login real. A recomendação guarda só a resposta no navegador; o registo recebe apenas a preferência de objetivo, sem nacionalidade. Confirmar requisitos/dispensas individuais nas fontes oficiais.
+4. **Email:** configurar/testar Resend ou Postmark e remetente. A verificação é necessária para os simulados grátis. Sem serviço, a produção guarda a falha sem links/tokens e oferece reenvio; a avaliação e as quatro aulas continuam acessíveis.
+5. **Jurista:** rever os dois textos de consentimento e a privacidade incluindo Google. Ambos continuam provisórios e marcados para revisão. Os antigos consentimentos únicos não foram transformados retroativamente em duas aceitações.
+6. **Ligações oficiais:** confirmar o URL configurado do PDF 2026 no Instituto Cervantes e a atualidade das fontes factuais; a rede bloqueou a verificação. O manual é apenas uma ligação externa, sem incorporação ou resumo.
+7. **Publicação:** o código é enviado à main; no Render confirmar o novo commit Live ou usar `rumbo-demo → Manual Deploy → Deploy latest commit`. `/api/health` deve indicar 0.5.0. A consulta pública foi bloqueada pelo proxy, pelo que não há confirmação externa do deploy. O alojamento gratuito continua temporário; antes de pagamentos reais mantém-se o requisito de armazenamento persistente pago, sem contratação nesta entrega.

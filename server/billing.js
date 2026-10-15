@@ -26,7 +26,8 @@ export function installBilling(app,db,{requireUser,config=billingConfig(),reques
     CREATE TABLE IF NOT EXISTS billing_events(id TEXT PRIMARY KEY,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS billing_checkouts(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,session_id TEXT NOT NULL,plan TEXT NOT NULL,url TEXT NOT NULL);`);
   if(!db.prepare('PRAGMA table_info(subscriptions)').all().some(c=>c.name==='period_start'))db.exec('ALTER TABLE subscriptions ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0');
-  db.exec(`CREATE TABLE IF NOT EXISTS checkout_consents(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,version TEXT NOT NULL,accepted_at TEXT NOT NULL);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS checkout_consents(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,version TEXT NOT NULL,accepted_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS checkout_consent_acceptances(consent_id TEXT NOT NULL REFERENCES checkout_consents(id) ON DELETE CASCADE,kind TEXT NOT NULL,version TEXT NOT NULL,accepted_at TEXT NOT NULL,PRIMARY KEY(consent_id,kind));`);
   const priceMap=config.prices || {};
   let origin='';
   try {const parsed=new URL(config.origin);if(parsed.protocol==='https:'&&!parsed.username&&!parsed.password&&parsed.pathname==='/')origin=parsed.origin;}catch{/* missing configuration */}
@@ -95,7 +96,12 @@ export function installBilling(app,db,{requireUser,config=billingConfig(),reques
       if(!req.user.email_verified_at)return res.status(403).json({error:'email_verification_required'});
       if(req.body.termsAccepted!==true||req.body.immediateAccess!==true)return res.status(400).json({error:'checkout_consent_required'});
       if(!configured)return res.status(503).json({error:'billing_not_ready'});
-      db.prepare('INSERT INTO checkout_consents VALUES (?,?,?,?)').run(randomUUID(),req.user.id,'draft-2026-10-15',new Date().toISOString());
+      const consentId=randomUUID(),acceptedAt=new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');try{
+        db.prepare('INSERT INTO checkout_consents VALUES (?,?,?,?)').run(consentId,req.user.id,'draft-2026-10-15-v2',acceptedAt);
+        const record=db.prepare('INSERT INTO checkout_consent_acceptances VALUES (?,?,?,?)');
+        record.run(consentId,'terms','draft-terms-2026-10-15-v2',acceptedAt);record.run(consentId,'immediate_access','draft-immediate-2026-10-15-v2',acceptedAt);db.exec('COMMIT');
+      }catch(error){db.exec('ROLLBACK');throw error;}
       if(busy.has(req.user.id))return res.status(409).json({error:'billing_busy'});
       busy.add(req.user.id);
       try{

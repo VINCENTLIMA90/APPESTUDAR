@@ -12,7 +12,7 @@ test('free tools show locks and plan benefits include VAT, cancellation and no A
  await page.locator('.practice-card').first().click();await expect(page.locator('.pricing-grid')).toBeVisible();
  const cards=page.locator('.pricing-card');await expect(cards).toHaveCount(3);await expect(cards.nth(0)).toContainText('25 perguntas, 45 min');await expect(cards.nth(0)).not.toContainText('IA');await expect(cards.nth(1)).toContainText('30 correções');await expect(cards.nth(2)).toContainText('Poupas 10 € por mês');
  for(const card of await cards.all()){await expect(card).toContainText('IVA incluído');await expect(card).toContainText('Cancela quando quiseres');}
- await expect(page.locator('.checkout-consent')).toContainText('[A REVER POR JURISTA]');await expect(page.locator('.checkout-consent input')).not.toBeChecked();
+ await expect(page.locator('.checkout-consent')).toContainText('[A REVER POR JURISTA]');await expect(page.locator('.checkout-consent input')).toHaveCount(2);for(const input of await page.locator('.checkout-consent input').all())await expect(input).not.toBeChecked();
  await page.getByRole('button',{name:'Definições',exact:true}).click();await expect(page.locator('input[type=password]')).toHaveCount(0);await expect(page.locator('.main-content')).not.toContainText('Chave de API');
  const blocked=await page.request.get('/api/exams');expect(blocked.status()).toBe(402);
 });

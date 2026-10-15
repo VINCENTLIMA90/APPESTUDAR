@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { extraLessons, extraQuestions, taskLibrary } from './curriculum.js';
+import {readMaster,questionFromRecord} from './question-bank.js';
+import { extraLessons, taskLibrary } from './curriculum.js';
 import { expandedLessons } from './expanded-curriculum.js';
 // All practice material below is original. It is not the official Cervantes question bank.
 export const languages = ['pt-PT', 'pt-BR', 'en', 'fr', 'ar', 'de', 'es'];
@@ -31,78 +31,6 @@ const foundationLessons = [
     sections: [['Una presentación sencilla', '«Me llamo Sara, vivo en Valencia y trabajo en una tienda. En mi tiempo libre me gusta cocinar. Quiero aprender español para hablar con mis vecinos». Añade detalles personales sin memorizar un texto rígido.'], ['Describe y explica', 'Para describir una escena, di dónde están las personas, qué hacen y cómo es el lugar. Usa frases sencillas: «Hay dos personas en una cocina. Están preparando la cena».'], ['Interactúa', 'Haz preguntas y responde con algo más que sí o no. Si no entiendes, puedes decir: «¿Puede repetir, por favor?». Grábate, escucha tu respuesta y comprueba si se entiende. La grabación requiere un navegador compatible y permiso de micrófono.']], takeaway: 'Frases claras + detalles + interacción. Puedes pedir que repitan una pregunta.' },
 ];
 
-// Stable IDs preserve error review when new questions are inserted into the bank.
-const q = (category, prompt, options, correct, explanation, audio = '') => ({ id: 'q-' + createHash('sha256').update(category + prompt).digest('hex').slice(0, 16), module: ['government', 'geography', 'culture', 'society'].includes(category) ? 'ccse' : 'dele', category, prompt, options, correct, explanation, audio });
-const foundationQuestions = [
-  q('government', '¿En qué año se aprobó la Constitución española vigente?', ['1978', '1986', '1992'], 0, 'La Constitución se aprobó en referéndum el 6 de diciembre de 1978.'),
-  q('government', 'La forma política del Estado español es…', ['una república federal.', 'una monarquía parlamentaria.', 'una monarquía absoluta.'], 1, 'La Constitución define España como una monarquía parlamentaria.'),
-  q('government', '¿Qué institución ejerce el poder legislativo?', ['El Gobierno', 'Las Cortes Generales', 'El Tribunal Supremo'], 1, 'Las Cortes Generales están formadas por el Congreso y el Senado.'),
-  q('government', 'Las Cortes Generales están formadas por…', ['el Congreso y el Senado.', 'los ministerios y los ayuntamientos.', 'los jueces y los fiscales.'], 0, 'El Parlamento español es bicameral: Congreso de los Diputados y Senado.'),
-  q('government', 'El poder ejecutivo corresponde…', ['al Gobierno.', 'al Senado en exclusiva.', 'a los jueces.'], 0, 'El Gobierno dirige la política y ejerce la función ejecutiva.'),
-  q('government', '¿Quién ejerce el poder judicial?', ['Los alcaldes', 'Los jueces y magistrados', 'Los ministros'], 1, 'La justicia es administrada por jueces y magistrados independientes.'),
-  q('government', 'Según la Constitución, las personas son iguales ante…', ['la ley.', 'el rey únicamente.', 'su empresa únicamente.'], 0, 'La igualdad ante la ley es un derecho constitucional.'),
-  q('government', 'La Constitución española reconoce la libertad religiosa.', ['Verdadero', 'Falso'], 0, 'La Constitución garantiza la libertad ideológica, religiosa y de culto.'),
-  q('government', '¿Cuál es la lengua oficial del Estado?', ['El castellano', 'El inglés', 'El francés'], 0, 'El castellano es la lengua oficial del Estado; hay otras lenguas cooficiales en determinadas comunidades.'),
-  q('government', 'Los ciudadanos contribuyen a los gastos públicos mediante…', ['los impuestos.', 'las propinas.', 'las multas solamente.'], 0, 'La contribución a los gastos públicos se realiza mediante el sistema tributario.'),
-  q('government', '¿Quién es el jefe del Estado español?', ['El rey', 'El presidente del Congreso', 'El alcalde de Madrid'], 0, 'En la monarquía parlamentaria española, el rey es el jefe del Estado.'),
-  q('government', 'La Constitución reconoce el derecho a la educación.', ['Verdadero', 'Falso'], 0, 'El artículo 27 de la Constitución reconoce el derecho a la educación.'),
-  q('government', 'En España existe una única religión obligatoria para todos los ciudadanos.', ['Verdadero', 'Falso'], 1, 'La Constitución garantiza la libertad religiosa; no hay una religión obligatoria.'),
-  q('geography', '¿Cuántas comunidades autónomas tiene España?', ['15', '17', '19'], 1, 'España tiene 17 comunidades autónomas, además de Ceuta y Melilla.'),
-  q('geography', '¿Cuáles son las dos ciudades autónomas?', ['Ceuta y Melilla', 'Madrid y Barcelona', 'Granada y Sevilla'], 0, 'Ceuta y Melilla son las dos ciudades autónomas españolas.'),
-  q('geography', '¿Cuál es la capital de España?', ['Barcelona', 'Madrid', 'Sevilla'], 1, 'Madrid es la capital de España.'),
-  q('geography', 'Las islas Canarias se encuentran en…', ['el océano Atlántico.', 'el mar Mediterráneo.', 'el mar Cantábrico.'], 0, 'El archipiélago canario está en el océano Atlántico.'),
-  q('geography', 'Las islas Baleares se encuentran en…', ['el océano Atlántico.', 'el mar Mediterráneo.', 'el mar del Norte.'], 1, 'Las Baleares están en el Mediterráneo.'),
-  q('geography', '¿Qué país comparte frontera terrestre con España al oeste?', ['Italia', 'Portugal', 'Alemania'], 1, 'Portugal limita al oeste con España.'),
-  q('geography', 'Los Pirineos se encuentran entre España y…', ['Francia.', 'Marruecos.', 'Italia.'], 0, 'Los Pirineos forman parte de la frontera con Francia.'),
-  q('geography', 'La capital de Andalucía es…', ['Sevilla.', 'Bilbao.', 'Zaragoza.'], 0, 'Sevilla es la capital de Andalucía.'),
-  q('geography', 'Barcelona pertenece a…', ['Galicia.', 'Cataluña.', 'Extremadura.'], 1, 'Barcelona es la capital de Cataluña.'),
-  q('geography', 'Santiago de Compostela es la capital de…', ['Galicia.', 'Cantabria.', 'La Rioja.'], 0, 'Santiago de Compostela es la capital de Galicia.'),
-  q('culture', '¿Quién escribió Don Quijote de la Mancha?', ['Miguel de Cervantes', 'Pablo Picasso', 'Federico García Lorca'], 0, 'Miguel de Cervantes es el autor de Don Quijote de la Mancha.'),
-  q('culture', '¿En qué ciudad está el Museo del Prado?', ['Madrid', 'Málaga', 'Valencia'], 0, 'El Museo Nacional del Prado está en Madrid.'),
-  q('culture', '¿Quién pintó Guernica?', ['Salvador Dalí', 'Pablo Picasso', 'Diego Velázquez'], 1, 'Guernica es una obra de Pablo Picasso.'),
-  q('culture', 'La Fiesta Nacional de España se celebra el…', ['12 de octubre.', '6 de diciembre.', '1 de mayo.'], 0, 'El 12 de octubre es la Fiesta Nacional de España.'),
-  q('culture', 'El Día de la Constitución se celebra el…', ['6 de diciembre.', '25 de diciembre.', '15 de agosto.'], 0, 'El 6 de diciembre recuerda el referéndum constitucional de 1978.'),
-  q('culture', 'La paella se asocia tradicionalmente con…', ['la Comunidad Valenciana.', 'Asturias.', 'Navarra.'], 0, 'La paella es un plato tradicional valenciano.'),
-  q('culture', 'El flamenco se asocia especialmente con…', ['Andalucía.', 'Finlandia.', 'Islandia.'], 0, 'El flamenco tiene una gran tradición en Andalucía.'),
-  q('culture', '¿Qué moneda se utiliza en España?', ['El euro', 'La peseta', 'El franco'], 0, 'España utiliza el euro.'),
-  q('society', '¿Cuál es el número general de emergencias?', ['112', '010', '118'], 0, 'El 112 es el número europeo de emergencias.'),
-  q('society', 'El ayuntamiento administra…', ['el municipio.', 'toda la Unión Europea.', 'los aeropuertos del mundo.'], 0, 'El ayuntamiento es el órgano de gobierno y administración municipal.'),
-  q('society', '¿Para qué sirve el padrón municipal?', ['Para registrar a quienes viven en el municipio', 'Para obtener un pasaporte automáticamente', 'Para pagar billetes de tren'], 0, 'El padrón acredita la residencia y el domicilio habitual en un municipio.'),
-  q('society', 'Con carácter general, la enseñanza obligatoria abarca…', ['de 6 a 16 años.', 'de 3 a 12 años.', 'de 18 a 25 años.'], 0, 'La educación básica obligatoria abarca, con carácter general, de los 6 a los 16 años.'),
-  q('society', 'La atención sanitaria primaria se presta en…', ['el centro de salud.', 'el ayuntamiento.', 'la comisaría.'], 0, 'El centro de salud es el lugar habitual de atención primaria.'),
-  q('society', 'El SEPE está relacionado con…', ['el empleo.', 'los museos.', 'el clima.'], 0, 'SEPE significa Servicio Público de Empleo Estatal.'),
-  q('society', '¿Qué organismo gestiona los impuestos estatales?', ['La Agencia Tributaria', 'La Biblioteca Nacional', 'El Museo del Prado'], 0, 'La Agencia Tributaria se encarga de la gestión del sistema tributario estatal.'),
-  q('society', 'Para ser atendido a una hora reservada se solicita…', ['una cita previa.', 'una factura.', 'un abono transporte.'], 0, 'La cita previa permite reservar un día y una hora de atención.'),
-  q('society', 'La tarjeta sanitaria se utiliza para…', ['acceder a servicios sanitarios.', 'conducir un coche.', 'votar en cualquier país.'], 0, 'La tarjeta sanitaria identifica a su titular en el sistema de salud.'),
-  q('society', 'El IVA es…', ['un impuesto.', 'un documento de identidad.', 'una universidad.'], 0, 'El IVA es el Impuesto sobre el Valor Añadido.'),
-  q('society', '¿Qué documento identifica a los ciudadanos españoles?', ['El DNI', 'El carné de biblioteca', 'La tarjeta de embarque'], 0, 'El DNI es el Documento Nacional de Identidad.'),
-  q('society', 'Una biblioteca pública permite…', ['consultar y tomar libros en préstamo.', 'expedir pasaportes.', 'renovar el permiso de conducir.'], 0, 'Las bibliotecas públicas ofrecen acceso a la lectura, información y préstamo de libros.'),
-  q('reading', '«La biblioteca cierra los lunes». ¿Qué día no puedes ir?', ['El lunes', 'El martes', 'El sábado'], 0, '«Cierra los lunes» indica que no abre ese día.'),
-  q('reading', '«Se alquila piso de dos habitaciones, sin muebles». El piso…', ['tiene muebles.', 'no tiene muebles.', 'tiene una habitación.'], 1, '«Sin muebles» significa que no está amueblado.'),
-  q('reading', '«Hola, Luis. Llego a las 18:30. ¿Me esperas en la estación?». ¿Dónde quedan?', ['En el aeropuerto', 'En la estación', 'En casa'], 1, 'El mensaje pide esperar en la estación.'),
-  q('reading', '«Compre dos entradas y pague solo una». Si llevas dos entradas, pagas…', ['una.', 'dos.', 'tres.'], 0, 'La promoción ofrece dos entradas al precio de una.'),
-  q('reading', '«El curso empieza el 3 de mayo y termina el 28 de junio». ¿Cuándo acaba?', ['El 3 de mayo', 'El 28 de junio', 'El 28 de mayo'], 1, '«Termina» y «acaba» expresan el final del curso.'),
-  q('reading', '«No olvides traer tu documento de identidad». Debes llevar…', ['tu identificación.', 'comida.', 'un regalo.'], 0, 'Se solicita un documento que te identifique.'),
-  q('reading', '«Marta no viene porque está enferma». ¿Por qué no viene?', ['Está trabajando', 'No tiene transporte', 'Tiene un problema de salud'], 2, '«Está enferma» indica un problema de salud.'),
-  q('reading', '«Cita el jueves 14 a las diez. Si no puede venir, avise». ¿Qué debes hacer si no puedes ir?', ['Avisar', 'Ir el viernes sin avisar', 'Llegar tarde'], 0, 'El aviso pide comunicar que no puedes asistir.'),
-  q('reading', '«Busco compañero de piso. No fumadores». ¿A quién busca?', ['A alguien que no fume', 'A un fumador', 'A un cocinero'], 0, 'La condición «no fumadores» excluye fumar.'),
-  q('reading', '«Farmacia abierta hasta las 22:00». A las 21:00…', ['está abierta.', 'ya está cerrada.', 'todavía no abre.'], 0, 'Las 21:00 son antes de la hora de cierre.'),
-  q('reading', '«Antes de salir, apaga las luces». ¿Qué haces primero?', ['Salir', 'Apagar las luces', 'Comprar una bombilla'], 1, '«Antes de salir» sitúa apagar las luces en primer lugar.'),
-  q('reading', '«El menú incluye bebida, pero no postre». ¿Qué se paga aparte?', ['La bebida', 'El postre', 'Todo el menú'], 1, 'El postre no está incluido.'),
-  q('listening', '¿A qué hora sale finalmente el tren?', ['A las nueve', 'A las nueve y veinte', 'A las diez'], 1, 'El tren de las nueve sale veinte minutos más tarde: a las nueve y veinte.', 'Atención, viajeros. El tren de las nueve tiene veinte minutos de retraso.'),
-  q('listening', '¿Qué va a comprar la persona?', ['Pan y leche', 'Fruta y agua', 'Café y arroz'], 0, 'La persona pide comprar pan y leche.', 'Voy al supermercado. Necesitamos pan y leche. Fruta todavía tenemos.'),
-  q('listening', '¿Dónde van a cenar?', ['En un restaurante', 'En casa de Ana', 'En el trabajo'], 1, 'Ana invita a cenar en su casa.', 'Hola, soy Ana. Al final no vamos al restaurante. Os espero en mi casa para cenar.'),
-  q('listening', '¿Qué tiempo hará mañana?', ['Lloverá', 'Hará sol', 'Nevará'], 0, 'El anuncio dice que mañana va a llover.', 'Hoy hace sol, pero mañana va a llover durante todo el día. No olvides el paraguas.'),
-  q('listening', '¿Cuánto cuesta el billete?', ['Doce euros', 'Veinte euros', 'Dos euros'], 0, 'El billete de ida cuesta doce euros.', 'Buenos días. El billete de ida cuesta doce euros. El de ida y vuelta cuesta veinte.'),
-  q('listening', '¿Qué día es la cita?', ['El martes', 'El miércoles', 'El jueves'], 1, 'La cita se cambia del martes al miércoles.', 'Le llamamos del centro de salud. Su cita del martes se cambia al miércoles a la misma hora.'),
-  q('listening', '¿Cómo va al trabajo?', ['En coche', 'En bicicleta', 'En autobús'], 2, 'Hoy va en autobús porque tiene el coche en el taller.', 'Normalmente voy en coche, pero hoy está en el taller y voy a coger el autobús.'),
-  q('listening', '¿Dónde está la farmacia?', ['Al lado del banco', 'Frente al colegio', 'Dentro del mercado'], 0, 'La farmacia está junto al banco.', 'Siga recto y gire a la derecha. La farmacia está al lado del banco.'),
-  q('listening', '¿Qué le gusta hacer los domingos?', ['Trabajar', 'Pasear por el parque', 'Ir de compras'], 1, 'Le gusta pasear con su familia.', 'Los sábados suelo hacer la compra. Los domingos me gusta pasear por el parque con mi familia.'),
-  q('listening', '¿Cuántas noches se quedará?', ['Una', 'Dos', 'Tres'], 1, 'De viernes a domingo son dos noches.', 'Quiero reservar una habitación. Llegamos el viernes por la tarde y salimos el domingo por la mañana.'),
-  q('listening', '¿Qué ha perdido?', ['El móvil', 'Las llaves', 'La cartera'], 2, 'La persona no encuentra su cartera.', 'Tengo el móvil y las llaves, pero no encuentro la cartera. Creo que la dejé en la cafetería.'),
-  q('listening', '¿Qué actividad prefiere?', ['Ir al cine', 'Nadar', 'Cocinar'], 1, 'Prefiere ir a la piscina.', 'El cine está bien, pero prefiero ir a nadar a la piscina esta tarde.'),
-];
-
 export const tasks = {
   ...taskLibrary,
   writing: { prompt: 'Escribe un correo a un amigo para invitarlo a pasar un fin de semana contigo. Explica dónde vives, qué actividades podéis hacer y cómo puede llegar. Como orientación para esta práctica, escribe entre 60 y 80 palabras.', model: 'Hola, Carlos:\n¿Qué tal? Te escribo para invitarte a mi casa el próximo fin de semana. Vivo en Valencia, cerca de la playa. El sábado podemos pasear por el centro y comer una paella. El domingo me gustaría ir contigo al mercado. Puedes venir en tren; te espero en la estación el viernes por la tarde. Dime si puedes venir.\nUn abrazo,\nAlex', rubric: ['He incluido un saludo y una despedida.', 'He explicado dónde vivo, las actividades y el transporte.', 'He unido las ideas con conectores sencillos.', 'He revisado los verbos y la concordancia.'] },
@@ -114,7 +42,7 @@ export const officialSources = [
   { id: 'dele', title: 'DELE · Preparar la prueba', url: 'https://examenes.cervantes.es/es/dele/preparar-prueba', description: 'Modelos de examen, guías y materiales de preparación.' },
   { id: 'a2', title: 'DELE A2 · Información del examen', url: 'https://examenes.cervantes.es/es/dele/examenes/a2', description: 'Estructura, tareas y documentación del nivel A2.' },
 ];
-export const questions = [...foundationQuestions, ...extraQuestions];
+export const questions = readMaster().records.filter(r=>r.status==='aprovada').map(questionFromRecord);
 export const lessons = [...foundationLessons, ...extraLessons, ...expandedLessons].sort((a,b)=>a.module.localeCompare(b.module)||Number(a.id.slice(1))-Number(b.id.slice(1))).map(lesson => ({ ...lesson,
   position:Number(lesson.id.slice(1)), free:Number(lesson.id.slice(1))<=2,
   reviewedAt: '2026-10-15', contentType: 'original',

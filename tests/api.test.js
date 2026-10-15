@@ -57,7 +57,7 @@ test('CCSE simulation has 25 unique questions, 45 minutes, and is graded on serv
   assert.equal(quiz.questions.filter(q => q.category === 'society').length, 7); assert.equal(quiz.questions.filter(q => q.category === 'culture').length, 3); assert.equal(quiz.questions.filter(q => q.category === 'geography').length, 2);
   assert.equal(quiz.questions.filter(q => q.options.length === 2).length, 3); assert.equal(quiz.questions.filter(q => q.category === 'government' && q.options.length === 3).length, 10);
   assert.ok(quiz.questions.every(q => q.correct === undefined && q.explanation === undefined));
-  const answers = quiz.questions.map(q => questions.find(original => q.id === original.id).correct);
+  const answers = quiz.questions.map(q => q.options.indexOf(questions.find(original => q.id === original.id).options[questions.find(original => q.id === original.id).correct]));
   const submitted = (await request('/quizzes/' + quiz.id + '/submit', { cookie: account.cookie, body: { answers } })).data;
   assert.equal(submitted.score, 25); assert.equal(submitted.percent, 100);
   const repeated = await request('/quizzes/' + quiz.id + '/submit', { cookie: account.cookie, body: { answers: answers.map(() => null) } });
@@ -77,7 +77,7 @@ test('review includes mistakes and removes questions after a correct later respo
   await request('/quizzes/' + quiz.id + '/submit', { cookie: account.cookie, body: { answers: quiz.questions.map(() => null) } });
   const review = (await request('/quizzes', { cookie: account.cookie, body: { module: 'ccse', mode: 'review' } })).data;
   assert.deepEqual(new Set(review.questions.map(q => q.id)), new Set(quiz.questions.map(q => q.id)));
-  await request('/quizzes/' + review.id + '/submit', { cookie: account.cookie, body: { answers: review.questions.map(q => questions.find(original => original.id === q.id).correct) } });
+  await request('/quizzes/' + review.id + '/submit', { cookie: account.cookie, body: { answers: review.questions.map(q => q.options.indexOf(questions.find(original => original.id === q.id).options[questions.find(original => original.id === q.id).correct])) } });
   assert.equal((await request('/quizzes', { cookie: account.cookie, body: { module: 'ccse', mode: 'review' } })).data.error, 'no_errors');
 });
 test('quiz ownership and invalid answers are enforced', async () => {

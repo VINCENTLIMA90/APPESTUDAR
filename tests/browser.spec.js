@@ -94,7 +94,7 @@ test('study plan recalculates and spaced review survives navigation',async({page
  await page.getByRole('button',{name:'Revisão inteligente',exact:true}).click();await expect(page.locator('.flashcard h2')).toBeVisible();const word=await page.locator('.flashcard h2').innerText();
  await page.getByRole('button',{name:'Ver resposta',exact:true}).click();await expect(page.locator('.flashcard-answer')).toBeVisible();await page.getByRole('button',{name:'Lembrei-me',exact:true}).click();
  await expect(page.locator('.flashcard h2')).not.toHaveText(word);
- await page.getByRole('button',{name:'O meu progresso',exact:true}).click();await expect(page.locator('.competency-card')).toHaveCount(8);
+ await page.getByRole('button',{name:'O meu progresso',exact:true}).click();await expect(page.locator('.competency-card')).toHaveCount(9);
  await page.reload();await page.getByRole('button',{name:'Plano de estudo',exact:true}).first().click();await expect(page.getByLabel('Sessões por semana',{exact:true})).toHaveValue('6');
  await page.setViewportSize({width:390,height:844});await page.locator('.language-picker select').selectOption('ar');expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBeFalsy();
 });
@@ -146,5 +146,5 @@ test('expanded listening lesson presents a practice activity and reveals the Spa
   await expect(page.locator('.lesson-activity>p')).toContainText('Anota producto, cantidad y día de recogida');
   await expect(page.locator('.lesson-activity>details p')).not.toBeVisible();
   await page.getByText('Ver exemplo de resposta',{exact:true}).click();await expect(page.locator('.lesson-activity>details p')).toContainText('una tarta para seis personas');
-  await page.locator('.lesson-checkpoints').getByRole('button',{name:'El viernes',exact:true}).click();await expect(page.locator('.lesson-checkpoints .green-text')).toContainText('pide el viernes');
+  await expect(page.locator('.reader-actions').getByRole('button',{name:'Teste do tema',exact:true})).toBeVisible();
 });

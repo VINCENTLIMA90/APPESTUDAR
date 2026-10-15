@@ -18,7 +18,7 @@ O ficheiro `render.yaml` prepara uma webapp Node no plano gratuito, sem chaves d
 
 Depois do commit estar em `main`, o Render pode publicar automaticamente se o auto-deploy estiver ativo. Caso a app continue igual, abrir o **web service `rumbo-demo` → Manual Deploy → Deploy latest commit**. A sincronização do Blueprint configura recursos; não confirma a compilação/publicação da aplicação.
 
-Confirmar que o deploy do commit pretendido termina em **Live**. A versão desta entrega é `0.4.0`, visível em `/api/health`. Depois atualizar a página. Esta verificação distingue uma publicação antiga de um problema de cache. Exportar previamente qualquer progresso da demonstração que seja necessário conservar.
+Confirmar que o deploy do commit pretendido termina em **Live**. A versão desta entrega é `0.5.0`, visível em `/api/health`. Depois atualizar a página. Esta verificação distingue uma publicação antiga de um problema de cache. Exportar previamente qualquer progresso da demonstração que seja necessário conservar.
 
 ## Uso pessoal contínuo ou distribuição
 
@@ -33,3 +33,13 @@ Esta versão inclui recuperação de palavra-passe e verificação de email, dep
 É **obrigatório um disco persistente, que requer um plano pago do Render**, antes de ativar pagamentos neste alojamento. Manter DATA_DIR e DATA_PERSISTENT atuais até essa decisão: esta implementação não contrata nem altera planos. Validar contas, quotas de IA, tentativas gratuitas, subscrições e cópias de segurança após reinício e nova publicação.
 
 Configurar e testar email, verificar a conta do comprador, configurar preços Stripe com IVA incluído e obter revisão jurídica dos textos e do consentimento de início imediato. Os ficheiros MP3 ainda não foram gerados com um serviço real; o fallback é a transcrição. Consultar [ENVIRONMENT.md](ENVIRONMENT.md) para todas as variáveis. O Express usa trust proxy=1 atrás do proxy do Render; não expor diretamente essa configuração sem rever a topologia de rede.
+
+## Banco CSV e Google nesta versão
+
+O servidor valida e sincroniza `content/questions.csv` no arranque. Validar previamente com `node scripts/import-questions.js --check`; um CSV inválido não deve ser publicado. SQLite recebe tabelas e colunas novas de forma aditiva; contas, resultados e agendamentos antigos são preservados. Manter a instância única e a cópia de segurança já previstas. Não foi alterado DATA_DIR, DATA_PERSISTENT ou o plano de alojamento.
+
+Email transacional é agora necessário para usar as tentativas gratuitas dos simulados. A avaliação e as quatro aulas gratuitas funcionam sem essa verificação. Falhas de envio são guardadas sem token/link e mostradas na conta; pedidos de recuperação continuam a dar resposta indistinguível.
+
+Google é opcional: configurar GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e APP_URL conforme README, registando a URI `/api/auth/google/callback`. Autorizar saída para `oauth2.googleapis.com` e `www.googleapis.com`; o navegador visita `accounts.google.com`. Sem credenciais, o botão fica oculto. A integração real e a entrega de emails precisam de validação na conta externa; nenhum serviço real foi usado nos testes.
+
+Os 150 factos CCSE e as 45 questões DELE adicionais continuam em rascunho. Não serão publicados pelo deploy. Aprovar conteúdo exige revisão editorial, fonte e reviewed_at no CSV. Os textos de checkout e privacidade continuam pendentes de jurista. Confirmar o endereço do PDF do manual no site oficial; não houve extração do manual.

@@ -11,19 +11,27 @@ export async function deliverEmail(config,message,requester=fetch){
 export function installAccounts(app,db,{secure,limit,languages,config=emailConfiguration(),send=deliverEmail,logger=console.info,clock=()=>new Date()}){
   for(const [table,name,definition] of [['users','email_verified_at','TEXT'],['sessions','created_at','INTEGER NOT NULL DEFAULT 0'],['sessions','revoked_reason','TEXT'],['sessions','device_id','TEXT']])if(!db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name===name))db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
   db.exec(`CREATE TABLE IF NOT EXISTS account_tokens(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,purpose TEXT NOT NULL,expires INTEGER NOT NULL,used_at INTEGER);
-    CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens(user_id,purpose);`);
+    CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens(user_id,purpose);
+    CREATE TABLE IF NOT EXISTS email_deliveries(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,purpose TEXT NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,completed_at INTEGER,error_code TEXT);`);
+  if(!db.prepare('PRAGMA table_info(account_tokens)').all().some(c=>c.name==='created_at'))db.exec('ALTER TABLE account_tokens ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0');
   const user=id=>db.prepare('SELECT id,name,email,language,created_at,email_verified_at FROM users WHERE id=?').get(id);
   const configured=['resend','postmark'].includes(config.provider)&&Boolean(config.key&&config.from&&config.origin);
   function origin(){try{const u=new URL(config.origin);if(u.username||u.password||u.pathname!=='/'||u.search||u.hash||!(u.protocol==='https:'||(!config.production&&u.protocol==='http:')))return null;return u.origin;}catch{return config.production?null:'http://localhost:3001';}}
+  function status(userId){const row=db.prepare("SELECT status FROM email_deliveries WHERE user_id=? AND purpose='verify_email' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(userId),token=db.prepare("SELECT created_at FROM account_tokens WHERE user_id=? AND purpose='verify_email' AND used_at IS NULL").get(userId);return {verificationFailed:row?.status==='failed',verificationRetryAt:token?new Date(token.created_at+60000).toISOString():null};}
+  function initialGoal(userId,goal){if(goal==='ccse')db.prepare('INSERT OR IGNORE INTO study_settings(user_id,goal,updated_at) VALUES (?,?,?)').run(userId,'ccse',clock().toISOString());}
   function issue(account,purpose){
-    const token=randomBytes(32).toString('hex'),now=clock().getTime();
+    const now=clock().getTime();
+    if(db.prepare('SELECT 1 FROM account_tokens WHERE user_id=? AND purpose=? AND used_at IS NULL AND created_at>?').get(account.id,purpose,now-60000))return;
+    const token=randomBytes(32).toString('hex'),deliveryId=randomBytes(16).toString('hex');
     db.prepare('DELETE FROM account_tokens WHERE user_id=? AND purpose=?').run(account.id,purpose);
-    db.prepare('INSERT INTO account_tokens VALUES (?,?,?,?,NULL)').run(digest(token),account.id,purpose,now+3600000);
-    const base=origin();if(!base)return;
+    db.prepare('INSERT INTO account_tokens(hash,user_id,purpose,expires,used_at,created_at) VALUES (?,?,?,?,NULL,?)').run(digest(token),account.id,purpose,now+3600000,now);
+    db.prepare('INSERT INTO email_deliveries VALUES (?,?,?,?,?,NULL,NULL)').run(deliveryId,account.id,purpose,'pending',now);
+    const complete=(value,error=null)=>db.prepare('UPDATE email_deliveries SET status=?,completed_at=?,error_code=? WHERE id=?').run(value,clock().getTime(),error,deliveryId);
+    const base=origin();if(!base){complete('failed','configuration');return;}
     const action=purpose==='reset_password'?'reset':'verify',link=base+'/?account='+action+'&token='+token;
     const message={to:account.email,subject:translate(account.language,action==='reset'?'emailResetSubject':'emailVerifySubject'),text:translate(account.language,'emailActionBody',{name:account.name,link})};
-    if(configured)Promise.resolve().then(()=>send(config,message)).catch(()=>{logger('Transactional email delivery failed.');});
-    else if(config.development&&!config.production)logger('Development account link: '+link);
+    if(configured)Promise.resolve().then(()=>send(config,message)).then(()=>complete('sent')).catch(()=>{complete('failed','delivery_failed');logger('Transactional email delivery failed.');});
+    else if(config.development&&!config.production){logger('Development account link: '+link);complete('development');}else complete('failed','configuration');
   }
   function session(res,id){
     const now=clock().getTime(),token=randomBytes(32).toString('hex');
@@ -44,7 +52,7 @@ export function installAccounts(app,db,{secure,limit,languages,config=emailConfi
       else if(row)req.user=user(row.user_id);
     }next();
   });
-  app.get('/api/me',(req,res)=>res.json({user:req.user||null,...(req.sessionIssue?{error:req.sessionIssue}:{})}));
+  app.get('/api/me',(req,res)=>res.json({user:req.user||null,...(req.user?{email:status(req.user.id)}:{}),...(req.sessionIssue?{error:req.sessionIssue}:{})}));
   app.post('/api/auth/register',limit,async(req,res)=>{
     const {name,email,password,language}=req.body;
     if(typeof name!=='string'||!name.trim()||name.length>70||typeof email!=='string'||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||typeof password!=='string'||password.length<10||password.length>128)return res.status(400).json({error:'registration_invalid'});
@@ -52,7 +60,7 @@ export function installAccounts(app,db,{secure,limit,languages,config=emailConfi
     if(db.prepare('SELECT 1 FROM users WHERE email=?').get(normalized))return res.status(409).json({error:'email_exists'});
     const id=randomBytes(16).toString('hex'),salt=randomBytes(16).toString('hex'),passwordHash=(await hashPassword(password,salt,64)).toString('hex');
     try{db.prepare('INSERT INTO users(id,name,email,password,salt,language,created_at) VALUES (?,?,?,?,?,?,?)').run(id,name.trim(),normalized,passwordHash,salt,languages.includes(language)?language:'pt-PT',clock().toISOString());}catch(error){if(error.code?.includes('CONSTRAINT')||error.errcode===2067)return res.status(409).json({error:'email_exists'});throw error;}
-    session(res,id);issue(user(id),'verify_email');res.status(201).json({user:user(id)});
+    initialGoal(id,req.body.initialGoal);session(res,id);issue(user(id),'verify_email');res.status(201).json({user:user(id)});
   });
   app.post('/api/auth/login',limit,async(req,res)=>{
     const {email,password}=req.body;
@@ -89,5 +97,5 @@ export function installAccounts(app,db,{secure,limit,languages,config=emailConfi
   }
   app.post('/api/auth/reset-password',limit,(req,res,next)=>consume(req,res,'reset_password').catch(next));
   app.post('/api/auth/verify-email',limit,(req,res,next)=>consume(req,res,'verify_email').catch(next));
-  return {emailAvailable:configured&&Boolean(origin())};
+  return {emailAvailable:configured&&Boolean(origin()),status,user,session,initialGoal};
 }

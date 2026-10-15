@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 const langs = ['pt-PT','pt-BR','en','fr','ar','de','es'];
 const tr = values => Object.fromEntries(langs.map((l,i) => [l,values[i]]));
 const lesson = (id,module,category,icon,minutes,title,sections,takeaway) => ({ id,module,category,icon,minutes,title:tr(title),intro:tr(title),sections,takeaway });
@@ -44,46 +43,6 @@ export const extraLessons = [
     ['Revisar una grabación','Escucha si has respondido a todos los puntos y si el mensaje se entiende. Un análisis de transcripción puede ayudar con vocabulario y gramática, pero no permite puntuar la pronunciación. El tutor permite ensayar situaciones e iniciar una nueva pregunta a partir de tus respuestas. Para practicar la interacción real, alterna turnos con otra persona o con el tutor.']
   ],'Lugar → personas → acciones → detalles. Conversar implica preguntar, responder y reaccionar.')
 ];
-const q = (category,prompt,options,correct,explanation) => ({ id:'q-'+createHash('sha256').update(category+prompt).digest('hex').slice(0,16),module:'ccse',category,prompt,options,correct,explanation,audio:'' });
-export const extraQuestions = [
-  q('government','¿A qué edad se alcanza la mayoría de edad en España?',['16 años','18 años','21 años'],1,'La mayoría de edad se alcanza a los 18 años.'),
-  q('government','El voto en las elecciones es…',['público y obligatorio.','secreto.','solo por internet.'],1,'El sufragio es universal, libre, igual, directo y secreto.'),
-  q('government','¿Qué institución supervisa la Administración para proteger los derechos fundamentales?',['El Defensor del Pueblo','El Museo del Prado','El Banco de España'],0,'El Defensor del Pueblo supervisa la actividad de la Administración y protege los derechos.'),
-  q('government','¿Qué órgano vela por el respeto a la Constitución?',['El Tribunal Constitucional','El ayuntamiento de Madrid','El SEPE'],0,'El Tribunal Constitucional interpreta y garantiza la Constitución.'),
-  q('government','El derecho de reunión pacífica está reconocido en la Constitución.',['Verdadero','Falso'],0,'La Constitución reconoce el derecho de reunión pacífica y sin armas.'),
-  q('government','Todas las personas deben profesar la misma religión.',['Verdadero','Falso'],1,'La Constitución garantiza la libertad religiosa.'),
-  q('government','El poder judicial debe ser independiente.',['Verdadero','Falso'],0,'La independencia judicial es una garantía del Estado de derecho.'),
-  q('government','La Constitución permite discriminar por razón de sexo.',['Verdadero','Falso'],1,'La igualdad ante la ley impide la discriminación por razón de sexo.'),
-  q('government','¿Cómo se llama la cámara de representación territorial?',['El Senado','El Consejo de Ministros','El Tribunal Supremo'],0,'El Senado es la cámara de representación territorial.'),
-  q('government','¿Quién dirige el Gobierno?',['El presidente del Gobierno','El alcalde de cada municipio','El presidente del Museo del Prado'],0,'El presidente dirige la acción del Gobierno y coordina a sus miembros.'),
-  q('geography','¿En qué comunidad autónoma está Bilbao?',['País Vasco','Castilla-La Mancha','Andalucía'],0,'Bilbao está en el País Vasco.'),
-  q('geography','Zaragoza es la capital de…',['Aragón.','Asturias.','Galicia.'],0,'Zaragoza es la capital de Aragón.'),
-  q('geography','Las Palmas de Gran Canaria está en…',['Canarias.','Baleares.','Cataluña.'],0,'Las Palmas de Gran Canaria forma parte del archipiélago canario.'),
-  q('geography','La capital de la Comunidad Valenciana es…',['Valencia.','Alicante.','Castellón de la Plana.'],0,'Valencia es la capital de la Comunidad Valenciana.'),
-  q('geography','El mar que baña gran parte de la costa norte española es…',['el Cantábrico.','el Rojo.','el Báltico.'],0,'El mar Cantábrico baña la costa norte de España.'),
-  q('geography','¿Qué río pasa por Sevilla?',['El Guadalquivir','El Sena','El Támesis'],0,'El Guadalquivir pasa por Sevilla.'),
-  q('geography','El Teide se encuentra en…',['Tenerife.','Mallorca.','Menorca.'],0,'El Teide está en la isla canaria de Tenerife.'),
-  q('geography','Palma es la capital de…',['las Illes Balears.','Galicia.','Cantabria.'],0,'Palma es la capital de las Illes Balears.'),
-  q('culture','La Alhambra está en…',['Granada.','Segovia.','Santander.'],0,'La Alhambra es un conjunto monumental de Granada.'),
-  q('culture','¿Qué pintor es autor de Las meninas?',['Diego Velázquez','Miguel de Cervantes','Antoni Gaudí'],0,'Las meninas es una obra de Diego Velázquez.'),
-  q('culture','Antoni Gaudí fue…',['arquitecto.','astronauta.','rey.'],0,'Gaudí fue arquitecto; gran parte de su obra está en Barcelona.'),
-  q('culture','Federico García Lorca es conocido por su obra como…',['poeta y dramaturgo.','jugador de baloncesto.','ingeniero ferroviario.'],0,'García Lorca escribió poesía y teatro.'),
-  q('culture','Las Fallas son una fiesta especialmente vinculada a…',['Valencia.','Oviedo.','Vitoria-Gasteiz.'],0,'Las Fallas se celebran en Valencia.'),
-  q('culture','Los Sanfermines se celebran en…',['Pamplona.','Mérida.','Murcia.'],0,'Los Sanfermines son una celebración de Pamplona.'),
-  q('culture','¿En qué ciudad está un famoso acueducto romano?',['Segovia','Huelva','A Coruña'],0,'El acueducto de Segovia es uno de los monumentos romanos más conocidos de España.'),
-  q('culture','El Camino de Santiago conduce a…',['Santiago de Compostela.','Barcelona exclusivamente.','Roma exclusivamente.'],0,'Las rutas del Camino de Santiago llevan a Santiago de Compostela.'),
-  q('society','Una nómina contiene información sobre…',['el salario y sus deducciones.','la previsión del tiempo.','el horario de los museos.'],0,'La nómina recoge el salario y las deducciones correspondientes.'),
-  q('society','El contrato de trabajo recoge…',['las condiciones de la relación laboral.','los resultados de un partido.','el menú del comedor solamente.'],0,'El contrato establece las condiciones de la relación de trabajo.'),
-  q('society','El Registro Civil inscribe…',['nacimientos, matrimonios y defunciones.','todos los billetes de tren.','las recetas de cocina.'],0,'El Registro Civil inscribe hechos relativos al estado civil.'),
-  q('society','La Educación Primaria tiene…',['seis cursos.','dos cursos.','diez cursos.'],0,'La Educación Primaria comprende seis cursos.'),
-  q('society','La ESO comprende…',['cuatro cursos.','un curso.','ocho cursos.'],0,'La Educación Secundaria Obligatoria comprende cuatro cursos.'),
-  q('society','¿Qué se puede pedir para presentar una queja sobre una compra?',['Una hoja de reclamaciones','Una tarjeta de embarque','Un padrón escolar'],0,'La hoja de reclamaciones permite formalizar una reclamación de consumo.'),
-  q('society','Para demostrar que has presentado una solicitud, conviene conservar…',['el justificante de presentación.','una fotografía de vacaciones.','una receta de cocina.'],0,'El justificante acredita que se ha presentado una solicitud.'),
-  q('society','Si un trámite tiene un plazo, significa que…',['hay un tiempo límite para realizarlo.','puede hacerse siempre sin límite.','solo se hace por teléfono.'],0,'El plazo indica el periodo en que puede realizarse un trámite.'),
-  q('society','Un certificado de empadronamiento acredita…',['la residencia en un municipio.','el nivel de español A2.','un título universitario.'],0,'El padrón municipal acredita la residencia y el domicilio habitual.'),
-  q('society','Para comprar un medicamento que requiere prescripción, se necesita…',['una receta médica.','un billete de autobús.','un permiso de pesca.'],0,'La receta médica permite obtener medicamentos sujetos a prescripción.')
-];
-
 export const taskLibrary = {
   'writing-appointment': {kind:'writing',prompt:'Escribe un correo a un centro de formación para cambiar la fecha de una cita. Explica por qué no puedes ir, propone dos horarios y pregunta qué documentos debes llevar. Escribe entre 60 y 70 palabras.',model:'Buenos días:\nTengo una cita el próximo martes, pero no puedo asistir porque trabajo esa mañana. ¿Sería posible cambiarla al miércoles por la tarde o al jueves a las diez? Me gustaría saber también qué documentos tengo que llevar. Muchas gracias por su ayuda. Quedo a la espera de su respuesta.\nUn saludo,\nAlex',rubric:['He explicado el motivo.','He propuesto dos horarios.','He preguntado por los documentos.','He usado un registro adecuado.']},
   'writing-holiday': {kind:'writing',prompt:'Cuenta unas vacaciones pasadas: cuándo y dónde fuiste, con quién, cómo viajaste y qué hiciste. Termina diciendo qué viaje te gustaría hacer después. Escribe entre 70 y 80 palabras.',model:'El verano pasado fui a Granada con mi hermana. Viajamos en tren y nos quedamos en un hotel pequeño cerca del centro. Por las mañanas visitábamos monumentos y por las tardes paseábamos. Un día visitamos la Alhambra y nos gustó muchísimo. También probamos platos típicos y compramos algunos recuerdos. El próximo año me gustaría visitar Galicia porque quiero conocer sus paisajes y caminar por la costa.',rubric:['He incluido lugar, momento y compañía.','He explicado el viaje y las actividades.','He usado tiempos del pasado.','He añadido un plan o deseo.']},

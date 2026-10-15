@@ -36,3 +36,11 @@ As alterações ao esquema SQLite são aditivas e preservam contas e histórico 
 ## Acesso às aulas
 
 As duas primeiras aulas de cada módulo são gratuitas. O acesso às restantes é controlado no servidor para subscrições CCSE (15 €/mês), DELE A2 (15 €/mês) ou ambos (20 €/mês). O plano cobre todas as ferramentas do módulo. A avaliação completa e uma tentativa de simulado por módulo são gratuitas; a IA gratuita tem quota zero. Os pagamentos ainda não estão ligados a uma conta Stripe e ficam indisponíveis na demonstração. A integração, a configuração e as verificações pendentes constam de [BILLING.md](BILLING.md). O número de aulas representa o catálogo de estudo; o plano continua a depender da avaliação e da disponibilidade de cada pessoa.
+
+## Banco mestre e rascunhos (0.5.0)
+
+`content/questions.csv` é a fonte do banco próprio; não foram consultadas/copiadas/reformuladas questões do manual para esta expansão. As 103 perguntas anteriores mantêm os seus identificadores e estado aprovado. Há 150 novos factos CCSE em rascunho (30 em cada uma de cinco categorias), com 300 variantes, e 45 questões DELE também em rascunho para nove temas sem cobertura objetiva. Fontes factuais: Constituição/BOE, legislação pública, IGN, museus estatais, BNE e plano curricular para as estratégias de língua. Os rascunhos requerem revisão factual/editorial; a rede impediu a confirmação online das fontes nesta execução.
+
+A importação é atómica e só apresenta linhas aprovadas. O simulador usa variantes `exame`; direitos/deveres mantém o formato V/F da tarefa 2. Testes de tema são separados da simulação e revelam explicações após cada resposta. A revisão e o domínio passam a factos, preservando os estados e resultados antigos. Ver [content/README.md](content/README.md) para a aprovação e a distribuição exata.
+
+O manual CCSE é apenas uma ligação externa configurável. Não foi descarregado, extraído, resumido ou apresentado dentro da aplicação.

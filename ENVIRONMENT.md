@@ -67,3 +67,12 @@ Preços com `tax_behavior=inclusive`, quantidade 1. Não misturar preços de tes
 ## Rede
 
 Saída do servidor: `examenes.cervantes.es`, `api.stripe.com`, o fornecedor de IA escolhido (`api.openai.com`, `api.anthropic.com` ou `generativelanguage.googleapis.com`) e de email (`api.resend.com` ou `api.postmarkapp.com`). O script de voz usa `<TTS_REGION>.tts.speech.microsoft.com`. Instalação usa `registry.npmjs.org`. As regras de rede do Codex não configuram automaticamente o Render.
+
+## Google OAuth / OpenID Connect (novas)
+
+| Variável | Descrição |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | Identificador do cliente OAuth Web criado na Google Cloud |
+| `GOOGLE_CLIENT_SECRET` | Segredo desse cliente, exclusivamente no servidor |
+
+Usam a `APP_URL` existente, HTTPS em produção. URI exata: `APP_URL` + `/api/auth/google/callback`. Sem estes valores, a opção Google não aparece. São opcionais para executar a app e os testes simulados. Saída adicional: `oauth2.googleapis.com` e `www.googleapis.com`; o navegador abre `accounts.google.com`. Consultar o roteiro no README. Preços Stripe e quotas de IA não foram alterados nesta versão.
