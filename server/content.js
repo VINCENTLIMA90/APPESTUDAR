@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { extraLessons, extraQuestions, taskLibrary } from './curriculum.js';
+import { expandedLessons } from './expanded-curriculum.js';
 // All practice material below is original. It is not the official Cervantes question bank.
 export const languages = ['pt-PT', 'pt-BR', 'en', 'fr', 'ar', 'de', 'es'];
 const titles = (pt, br, en, fr, ar, de, es) => Object.fromEntries(languages.map((l, i) => [l, [pt, br, en, fr, ar, de, es][i]]));
@@ -114,8 +115,9 @@ export const officialSources = [
   { id: 'a2', title: 'DELE A2 · Información del examen', url: 'https://examenes.cervantes.es/es/dele/examenes/a2', description: 'Estructura, tareas y documentación del nivel A2.' },
 ];
 export const questions = [...foundationQuestions, ...extraQuestions];
-export const lessons = [...foundationLessons, ...extraLessons].map(lesson => ({ ...lesson,
+export const lessons = [...foundationLessons, ...extraLessons, ...expandedLessons].sort((a,b)=>a.module.localeCompare(b.module)||Number(a.id.slice(1))-Number(b.id.slice(1))).map(lesson => ({ ...lesson,
+  position:Number(lesson.id.slice(1)), free:Number(lesson.id.slice(1))<=2,
   reviewedAt: '2026-10-15', contentType: 'original',
   referenceUrl: lesson.module === 'ccse' ? 'https://examenes.cervantes.es/es/ccse/como' : 'https://examenes.cervantes.es/es/dele/examenes/a2',
-  checkpoints: questions.filter(q => q.category === lesson.category).slice(-2).map(({prompt,options,correct,explanation}) => ({prompt,options,correct,explanation}))
+  checkpoints: lesson.checkpoints || questions.filter(q => q.category === lesson.category).slice(-2).map(({prompt,options,correct,explanation}) => ({prompt,options,correct,explanation}))
 }));

@@ -1,6 +1,6 @@
 # Rumbo
 
-Webapp de preparação para os exames CCSE e DELE A2, com uma interface adaptada a computador e telemóvel. Esta é uma primeira versão funcional para uso pessoal; não é um produto do Instituto Cervantes.
+Webapp de preparação para os exames CCSE e DELE A2, com uma interface adaptada a computador e telemóvel. Demonstração: https://rumbo-demo.onrender.com/. Não é um produto do Instituto Cervantes.
 
 ## Executar
 
@@ -25,7 +25,8 @@ npm start
 
 ## O que está implementado
 
-- Dois módulos: CCSE e DELE A2, com 16 aulas e 103 perguntas originais de prática em espanhol, fontes de referência e exercícios de consolidação.
+- Dois módulos: CCSE e DELE A2, com 48 aulas (24 de cada) e 103 perguntas originais de prática em espanhol, fontes de referência e exercícios de consolidação. As novas aulas incluem atividades e respostas de exemplo.
+- Duas aulas gratuitas por módulo, catálogo por área de estudo e controlo de acesso às restantes no servidor. Subscrições mensais preparadas: CCSE 15 €, DELE A2 15 €, ambos 20 €. Checkout e gestão no Stripe implementados; cobrança desativada até ligar a conta e validar armazenamento permanente. Ver [BILLING.md](BILLING.md).
 - Interface em PT-PT, PT-BR, inglês, francês, árabe (RTL), alemão e espanhol. Os conteúdos pedagógicos estão em espanhol, a língua dos exames; as explicações de correção da IA seguem o idioma da conta.
 - Registo e início de sessão com palavras-passe protegidas por scrypt, cookies HttpOnly e sessões no servidor. Não há contas ou palavras-passe predefinidas.
 - Progresso por utilizador, aulas concluídas, resultados, dias de atividade, histórico e revisão dos erros até serem respondidos corretamente.
@@ -83,7 +84,7 @@ npm test
 npm run test:e2e
 ```
 
-Os testes de API verificam autenticação, isolamento entre utilizadores, correção no servidor, revisão espaçada, previsão do plano, percurso DELE, gravações, tutor, feedback, exportação e eliminação. Os testes de fontes usam respostas controladas para verificar alterações e falhas. Os testes de navegador verificam registo, progresso após reload, avaliação inicial, plano, revisão, percurso DELE retomável, escrita, gravação com microfone simulado, tutor com resposta simulada, sete idiomas e layout móvel RTL.
+Os testes de API verificam autenticação, isolamento entre utilizadores, correção no servidor, revisão espaçada, previsão do plano, percurso DELE, gravações, tutor, feedback, exportação e eliminação. A integração Stripe usa respostas simuladas para verificar preços, assinaturas de webhooks, repetição de eventos, cancelamento, expiração e isolamento de módulos. Os testes de fontes usam respostas controladas para verificar alterações e falhas. Os testes de navegador verificam também os planos mensais, o bloqueio das aulas e os sete idiomas em layout móvel RTL.
 
 O Playwright utiliza `/usr/bin/chromium` se existir; `CHROMIUM_PATH` permite outra instalação. Caso contrário, requer uma instalação de Chromium compatível com o Playwright. Os testes usam a porta 4173 e uma base SQLite separada em `/tmp/rumbo-e2e`, sem alterar os dados da aplicação. Os testes do microfone usam um dispositivo simulado e não comprovam a qualidade de gravação no telemóvel do utilizador.
 
@@ -91,6 +92,6 @@ O Playwright utiliza `/usr/bin/chromium` se existir; `CHROMIUM_PATH` permite out
 
 SQLite guarda as contas, sessões, respostas e gravações. Deve existir um volume persistente com cópias de segurança para manter os dados entre substituições do servidor. A sincronização entre dispositivos funciona quando ambos acedem à mesma instância da webapp.
 
-Para uma distribuição pública será necessário disponibilizar um domínio com HTTPS, executar com `NODE_ENV=production` (cookies Secure) atrás de um proxy que preserve o host e implementar recuperação/verificação de email e faturação. Esta versão não envia emails, não cobra subscrições e não foi publicada num serviço externo.
+Para distribuição comercial será necessário armazenamento permanente com cópias de segurança, executar com `NODE_ENV=production` (cookies Secure) atrás de um proxy que preserve o host, configurar Stripe e validar faturação. Recuperação de palavra-passe e verificação de email ainda não estão implementadas. A demonstração está no Render; as cobranças reais continuam desativadas.
 
-Destinos de rede necessários: `registry.npmjs.org` para instalar, `examenes.cervantes.es` para fontes, `api.openai.com`, `api.anthropic.com` e `generativelanguage.googleapis.com` para IA. As fontes tipográficas são servidas localmente. As chaves pessoais são configuradas na aplicação, nunca no código nem no chat.
+Destinos de rede necessários: `registry.npmjs.org` para instalar, `examenes.cervantes.es` para fontes, `api.openai.com`, `api.anthropic.com` e `generativelanguage.googleapis.com` para IA. A integração de pagamentos requer `api.stripe.com` no servidor. As fontes tipográficas são servidas localmente. As chaves pessoais são configuradas na aplicação, nunca no código nem no chat.

@@ -10,12 +10,13 @@ import { extractMaterials, materialFingerprint } from './sources.js';
 import { installLearning, skillSummary, studyDate } from './learning.js';
 import { installExams, examTasks, model } from './exam.js';
 import { installTutor } from './tutor.js';
+import { installBilling } from './billing.js';
 const allTasks = Object.fromEntries(Object.entries({ ...tasks, ...examTasks }).map(([id, task]) => [id, { ...task, kind: task.kind || id }]));
 
 const hashPassword = promisify(scrypt);
 const digest = token => createHash('sha256').update(token).digest('hex');
 const dateKey = date => new Date(date).toISOString().slice(0, 10);
-export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, tutor, sourceFetch = fetch } = {}) {
+export function createApp({ dataDir = path.resolve('.data'), secure = process.env.NODE_ENV === 'production', ai = evaluateAI, tutor, sourceFetch = fetch, billingConfig, billingFetch } = {}) {
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path.join(dataDir, 'rumbo.sqlite'));
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
@@ -30,6 +31,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
   for (const source of officialSources) db.prepare('INSERT OR IGNORE INTO sources(id) VALUES (?)').run(source.id);
   const app = express();
   app.disable('x-powered-by');
+  const billing = installBilling(app,db,{requireUser,...(billingConfig?{config:billingConfig}:{}),...(billingFetch?{requester:billingFetch}:{})});
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -62,6 +64,7 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     next();
   });
   function requireUser(req, res, next) { if (!req.user) return res.status(401).json({ error: 'login_required' }); next(); }
+  billing.routes();
   const learning = installLearning(app, db, { requireUser, questions, lessons });
   const exams = installExams(app, db, { requireUser, sourceFetch });
   installTutor(app, db, { requireUser, ...(tutor ? { ai:tutor } : {}) });
@@ -71,8 +74,14 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(digest(token), id, Date.now() + 30 * 86400000);
     res.cookie('rumbo_session', token, { httpOnly: true, sameSite: 'lax', secure, maxAge: 30 * 86400000, path: '/' });
   }
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok', version:'0.2.0' }));
-  app.get('/api/catalog', (_req, res) => res.json({ lessons, tasks: allTasks, model, languages, providers: Object.entries(providers).map(([id, p]) => ({ id, label: p.label, model: p.model })) }));
+  app.get('/api/health', (_req, res) => res.json({ status: 'ok', version:'0.3.0' }));
+  app.get('/api/catalog', (req, res) => res.json({ lessons:billing.catalog(lessons,req.user?.id), tasks: allTasks, model, languages, providers: Object.entries(providers).map(([id, p]) => ({ id, label: p.label, model: p.model })) }));
+  app.get('/api/lessons/:id',(req,res)=>{
+    const lesson=lessons.find(l=>l.id===req.params.id);
+    if(!lesson)return res.status(404).json({error:'not_found'});
+    if(!billing.canAccess(req.user?.id,lesson))return res.status(402).json({error:'subscription_required',module:lesson.module});
+    res.json({lesson});
+  });
   app.get('/api/me', (req, res) => res.json({ user: req.user || null }));
   app.post('/api/auth/register', limit, async (req, res) => {
     const { name, email, password, language } = req.body;
@@ -122,7 +131,9 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     res.json({ completed, results, submissions, activeDays, streak, skills, badges, reviewCount: reviews.length });
   });
   app.post('/api/lessons/:id/complete', requireUser, (req, res) => {
-    if (!lessons.some(l => l.id === req.params.id)) return res.status(404).json({ error: 'not_found' });
+    const lesson=lessons.find(l=>l.id===req.params.id);
+    if (!lesson) return res.status(404).json({ error: 'not_found' });
+    if (!billing.canAccess(req.user.id,lesson)) return res.status(402).json({error:'subscription_required'});
     db.prepare('INSERT OR IGNORE INTO completions VALUES (?,?,?)').run(req.user.id, req.params.id, new Date().toISOString());
     res.json({ ok: true });
   });
@@ -215,9 +226,13 @@ export function createApp({ dataDir = path.resolve('.data'), secure = process.en
     const reviews = db.prepare('SELECT item_id,kind,interval_days,repetitions,lapses,due_at,updated_at FROM review_state WHERE user_id=?').all(req.user.id);
     const examAttempts = db.prepare('SELECT * FROM exam_attempts WHERE user_id=?').all(req.user.id);
     const conversations = db.prepare('SELECT * FROM tutor_conversations WHERE user_id=?').all(req.user.id).map(c=>({...c,messages:db.prepare('SELECT role,content,created_at FROM tutor_messages WHERE conversation_id=? ORDER BY rowid').all(c.id)}));
-    res.attachment('rumbo-progress.json').json({ user: req.user, completions, quizzes, submissions, plan, reviews, examAttempts, conversations });
+    res.attachment('rumbo-progress.json').json({ user: req.user, completions, quizzes, submissions, plan, reviews, examAttempts, conversations, billing:billing.summary(req.user.id) });
   });
-  app.delete('/api/me', requireUser, (req, res) => { db.prepare('DELETE FROM users WHERE id=?').run(req.user.id); res.clearCookie('rumbo_session', { path: '/' }); res.json({ ok: true }); });
+  app.delete('/api/me', requireUser, async (req, res) => {
+    try { await billing.cancelForDeletion(req.user.id); }
+    catch { return res.status(503).json({error:'billing_delete_failed'}); }
+    db.prepare('DELETE FROM users WHERE id=?').run(req.user.id); res.clearCookie('rumbo_session', { path: '/' }); res.json({ ok: true });
+  });
 
   let checking = false;
   async function checkSources() {

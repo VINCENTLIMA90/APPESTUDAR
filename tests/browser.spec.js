@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {lessons} from '../server/content.js';
 async function createAccount(page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Criar conta', exact: true }).click();
@@ -80,7 +81,7 @@ test('seven interface languages and mobile Arabic layout render without overflow
   await page.getByRole('button', { name: 'مساحة الدراسة', exact: true }).click();
   await expect(page.locator('.sidebar')).toHaveClass(/is-open/);
   await page.locator('.sidebar nav').getByRole('button', { name: 'الدروس', exact: true }).click();
-  await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(8);
+  await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(24);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBeFalsy();
   expect(errors).toEqual([]);
 });
@@ -115,4 +116,37 @@ test('tutor UI sends explicit consent and keeps a simulated API key only in memo
  await page.route('**/api/tutor/chat',async route=>{const body=route.request().postDataJSON();expect(body.consent).toBe(true);expect(body.key).toBe('test-ui-key-not-a-real-secret');await route.fulfill({json:{id:'mock-conversation',mode:'conversation',messages:[{role:'user',content:body.message},{role:'assistant',content:{reply:'¡Muy bien! Vamos a practicar.',correction:'Usa «fui» para hablar de ayer.',question:'¿Con quién fuiste?',focus:'Pasado'}}]}});});
  await page.locator('.tutor-form textarea').fill('Ayer voy al parque.');await page.locator('.tutor-form input[type=checkbox]').check();await page.getByRole('button',{name:'Enviar ao tutor',exact:true}).click();await expect(page.locator('.tutor-question')).toHaveText('¿Con quién fuiste?');expect(await page.evaluate(()=>JSON.stringify(localStorage).includes('test-ui-key-not-a-real-secret'))).toBeFalsy();
  await page.reload();await page.getByRole('button',{name:'Tutor de espanhol',exact:true}).click();await expect(page.getByLabel('Chave de API',{exact:true})).toHaveValue('');
+});
+test('course catalogue offers two free lessons per module and shows all monthly plans for locked content',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:'Aulas',exact:true}).click();
+  await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(24);
+  await expect(page.locator('.lesson-grid .lesson-access.is-free')).toHaveCount(2);
+  await page.locator('.lesson-grid .lesson-card').nth(1).click();await expect(page.locator('.lesson-reader h1')).toHaveText('Descobre o mapa de Espanha');
+  await page.getByRole('button',{name:'Voltar',exact:true}).click();
+  await page.locator('.lesson-grid .lesson-card').nth(2).click();await expect(page.locator('.lesson-paywall h2')).toHaveText('Cultura que nos aproxima');
+  await expect(page.locator('.pricing-card')).toHaveCount(3);await expect(page.locator('.plan-price strong')).toHaveText(['15 €','15 €','20 €']);
+  await expect(page.getByRole('button',{name:'Disponível em breve',exact:true})).toHaveCount(3);await expect(page.getByRole('button',{name:'Disponível em breve',exact:true}).first()).toBeDisabled();
+  await expect(page.locator('.payments-notice')).toContainText('Os pagamentos ainda não estão disponíveis');
+  await page.screenshot({path:'/tmp/rumbo-subscriptions.png',fullPage:true});
+  await page.getByRole('button',{name:'Aulas',exact:true}).click();await page.locator('.module-tabs').getByRole('button',{name:'DELE A2',exact:true}).click();await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(24);await expect(page.locator('.lesson-grid .lesson-access.is-free')).toHaveCount(2);
+  await page.getByLabel('Área de estudo',{exact:true}).selectOption('speaking');await expect(page.locator('.lesson-grid .lesson-card')).toHaveCount(6);
+  await page.locator('.lesson-grid .lesson-card').last().click();await expect(page.locator('.lesson-paywall h2')).toHaveText('Ensaio final e plano de revisão');
+  for(const language of ['en','fr','de','es','pt-BR','ar']){await page.locator('.language-picker select').selectOption(language);await expect(page.locator('.pricing-card')).toHaveCount(3);expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBeFalsy();}
+  await page.setViewportSize({width:390,height:844});await expect(page.locator('html')).toHaveAttribute('dir','rtl');expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBeFalsy();await page.screenshot({path:'/tmp/rumbo-subscriptions-arabic.png',fullPage:true});
+});
+test('a successful checkout return URL alone does not grant paid access',async({page})=>{
+  await createAccount(page);await page.goto('/?billing=success');await expect(page.locator('.source-warning')).toContainText('A aguardar confirmação do pagamento');
+  const blocked=await page.request.get('/api/lessons/c3');expect(blocked.status()).toBe(402);
+  await expect(page.locator('.access-summary h2')).toHaveText('Plano gratuito');
+});
+test('expanded listening lesson presents a practice activity and reveals the Spanish model on demand',async({page})=>{
+  // UI-only fixture; API tests separately verify the real paid-content access rules.
+  await page.route('**/api/lessons/d13',route=>route.fulfill({json:{lesson:lessons.find(l=>l.id==='d13')}}));
+  await page.goto('/');await page.getByRole('button',{name:'Aulas',exact:true}).click();await page.locator('.module-tabs').getByRole('button',{name:'DELE A2',exact:true}).click();
+  await page.getByRole('button').filter({hasText:'Compras e pedidos ao telefone'}).click();
+  await expect(page.locator('.lesson-reader h1')).toHaveText('Compras e pedidos ao telefone');
+  await expect(page.locator('.lesson-activity>p')).toContainText('Anota producto, cantidad y día de recogida');
+  await expect(page.locator('.lesson-activity details p')).not.toBeVisible();
+  await page.getByText('Ver exemplo de resposta',{exact:true}).click();await expect(page.locator('.lesson-activity details p')).toContainText('una tarta para seis personas');
+  await page.locator('.lesson-checkpoints').getByRole('button',{name:'El viernes',exact:true}).click();await expect(page.locator('.lesson-checkpoints .green-text')).toContainText('pide el viernes');
 });

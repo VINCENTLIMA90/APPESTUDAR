@@ -1,4 +1,5 @@
 import { nextTranslate, nextRows } from './i18n-next.js';
+import { commerceTranslate, commerceRows } from './i18n-commerce.js';
 export const locales = { 'pt-PT': 'Português (PT)', 'pt-BR': 'Português (BR)', en: 'English', fr: 'Français', ar: 'العربية', de: 'Deutsch', es: 'Español' };
 const order = Object.keys(locales);
 const rows = {
@@ -135,5 +136,5 @@ const rows = {
   notCertified: ['Avaliação orientativa · não certifica um nível DELE','Avaliação orientativa · não certifica um nível DELE','Indicative assessment · not a DELE certification','Évaluation indicative · sans certification DELE','تقييم إرشادي · ليس شهادة DELE','Orientierende Bewertung · kein DELE-Zertifikat','Evaluación orientativa · no certifica un nivel DELE'],
   assessmentContinue: ['Completa também a escrita e a oralidade para teres uma visão das quatro competências.','Complete também a escrita e a fala para uma visão das quatro habilidades.','Complete writing and speaking too for a view of all four skills.','Complétez aussi l’écrit et l’oral pour les quatre compétences.','أكمل الكتابة والتحدث أيضًا لتقييم المهارات الأربع.','Ergänze Schreiben und Sprechen für alle vier Fertigkeiten.','Completa también escritura y oralidad para las cuatro destrezas.'],
 };
-export function translate(lang, key) { return nextTranslate(lang,key) ?? rows[key]?.[order.indexOf(lang)] ?? rows[key]?.[2] ?? rows.error[order.indexOf(lang)] ?? rows.error[2]; }
-export const translationKeys = [...Object.keys(rows), ...Object.keys(nextRows)];
+export function translate(lang, key) { return commerceTranslate(lang,key) ?? nextTranslate(lang,key) ?? rows[key]?.[order.indexOf(lang)] ?? rows[key]?.[2] ?? rows.error[order.indexOf(lang)] ?? rows.error[2]; }
+export const translationKeys = [...Object.keys(rows), ...Object.keys(nextRows), ...Object.keys(commerceRows)];

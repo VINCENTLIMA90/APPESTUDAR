@@ -20,4 +20,4 @@ Para manter contas e progresso, escolher um alojamento com armazenamento persist
 
 O servidor necessita de Node.js 24.19 ou posterior, HTTPS na entrada e acesso de saída aos domínios oficiais e fornecedores de IA descritos no README. O proxy deve preservar o host público. `NODE_ENV=production` ativa cookies Secure. O endpoint `/api/health` é usado para confirmar o arranque.
 
-Esta versão ainda não inclui recuperação de palavra-passe, validação de email nem cobrança de subscrições.
+Esta versão ainda não inclui recuperação de palavra-passe nem validação de email. Inclui três planos mensais e integração Stripe preparada, com cobrança desativada por omissão. A ativação depende de uma conta Stripe e armazenamento permanente; consultar [BILLING.md](BILLING.md). Não ativar pagamentos sobre o diretório temporário da demonstração.

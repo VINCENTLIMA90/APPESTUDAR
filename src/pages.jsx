@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, BookOpen, Check, CheckCircle2, ChevronLeft, Clock3, Flame, Headphones, Landmark, Layers3, Map, Mic, PenLine, RotateCcw, ShieldCheck, Sparkles, Target, TrendingUp } from 'lucide-react';
 import { useApp } from './App';
 import { api } from './api';
@@ -34,8 +34,11 @@ export function Dashboard() {
 function Stat({ icon: Icon, label, value, note, small }) { return <div className="stat-card"><span className="stat-icon"><Icon size={22} strokeWidth={1.7} /></span><div><span className="stat-label">{label}</span><div className="stat-value">{value}<span>{note} {small}</span></div></div><TrendingUp className="stat-trend" size={17} /></div>; }
 
 export function Lessons() {
-  const { catalog, module, progress, t, lang, openLesson } = useApp();
-  return <><PageTitle title={t('lessons')} subtitle={t('spanishContent')}><ModuleTabs /></PageTitle><div className="lesson-grid">{catalog.lessons.filter(l => l.module === module).map(l => <LessonCard key={l.id} lesson={l} lang={lang} t={t} completed={progress.completed.some(c => c.lesson_id === l.id)} onClick={() => openLesson(l)} />)}</div></>;
+  const { catalog, module, progress, t, lang, openLesson, navigate } = useApp();
+  const [category,setCategory]=useState('all');
+  useEffect(()=>setCategory('all'),[module]);
+  const moduleLessons=catalog.lessons.filter(l=>l.module===module), categories=[...new Set(moduleLessons.map(l=>l.category))];
+  return <><PageTitle title={t('lessons')} subtitle={t('catalogIntro')}><ModuleTabs /></PageTitle><section className="course-overview"><div><BookOpen size={23}/><div><strong>24 {t('lessons').toLowerCase()} · {module==='ccse'?'CCSE':'DELE A2'}</strong><p>{t('freeLessons')}</p></div></div><button className="text-button" onClick={()=>navigate('plans')}>{t('viewPlans')}<Arrow/></button></section><div className="course-filter"><label htmlFor="course-area">{t('unit')}</label><select id="course-area" value={category} onChange={event=>setCategory(event.target.value)}><option value="all">{t('allAreas')}</option>{categories.map(key=><option key={key} value={key}>{t(key)} · {moduleLessons.filter(l=>l.category===key).length}</option>)}</select></div><div className="lesson-grid">{moduleLessons.filter(l=>category==='all'||l.category===category).map(l => <LessonCard key={l.id} lesson={l} lang={lang} t={t} completed={progress.completed.some(c => c.lesson_id === l.id)} onClick={() => openLesson(l)} />)}</div></>;
 }
 export function LessonPage({ lesson, onBack }) {
   const { t, lang, progress, requireUser, loadProgress, notify, startQuiz } = useApp();
@@ -43,7 +46,15 @@ export function LessonPage({ lesson, onBack }) {
   const [busy, setBusy] = useState(false);
   const Icon = icons[lesson.icon];
   function complete() { requireUser(async () => { setBusy(true); try { await api('/lessons/' + lesson.id + '/complete', {}); await loadProgress(); notify(t('saved')); } catch (e) { notify(t(e.message), true); } finally { setBusy(false); } }); }
-  return <article className="lesson-reader"><button className="text-button" onClick={onBack}><ChevronLeft size={16} className="directional" />{t('back')}</button><div className="reader-heading"><span className="large-icon"><Icon size={31} /></span><div><span className="eyebrow">{lesson.module === 'ccse' ? 'CCSE' : 'DELE A2'} · {lesson.minutes} {t('minutes')}</span><h1>{lesson.title[lang]}</h1><p>{lesson.intro[lang]}</p></div></div><p className="info-note">{t('spanishContent')} · {t('reviewedOn')}: {lesson.reviewedAt} · <a href={lesson.referenceUrl} target="_blank" rel="noopener noreferrer">{t('sources')}</a></p><div className="reader-body" lang="es" dir="ltr">{lesson.sections.map(([heading, body], i) => <section key={heading}><span className="section-number">0{i + 1}</span><h2>{heading}</h2><p>{body}</p></section>)}<LessonCheckpoints checkpoints={lesson.checkpoints||[]}/><aside className="takeaway"><Sparkles size={21} /><div><strong>{t('keyIdea')}</strong><p>{lesson.takeaway}</p></div></aside></div><div className="reader-actions"><button className="button primary" disabled={busy || done} onClick={complete}>{done ? <CheckCircle2 size={17} /> : <Check size={17} />}{t(done ? 'done' : busy ? 'saving' : 'complete')}</button><button className="button outline" onClick={() => startQuiz('practice', lesson.module)}>{t('practice')}<Arrow /></button></div></article>;
+  return <article className="lesson-reader"><button className="text-button" onClick={onBack}><ChevronLeft size={16} className="directional" />{t('back')}</button><div className="reader-heading"><span className="large-icon"><Icon size={31} /></span><div><span className="eyebrow">{lesson.module === 'ccse' ? 'CCSE' : 'DELE A2'} · {lesson.minutes} {t('minutes')}</span><h1>{lesson.title[lang]}</h1><p>{lesson.intro[lang]}</p></div></div><p className="info-note">{t('spanishContent')} · {t('reviewedOn')}: {lesson.reviewedAt} · <a href={lesson.referenceUrl} target="_blank" rel="noopener noreferrer">{t('sources')}</a></p><div className="reader-body" lang="es" dir="ltr">{lesson.sections.map(([heading, body], i) => <section key={heading}><span className="section-number">0{i + 1}</span><h2>{heading}</h2><p>{body}</p></section>)}{lesson.activity&&<LessonActivity lesson={lesson}/>}<LessonCheckpoints checkpoints={lesson.checkpoints||[]}/><aside className="takeaway"><Sparkles size={21} /><div><strong>{t('keyIdea')}</strong><p>{lesson.takeaway}</p></div></aside></div><div className="reader-actions"><button className="button primary" disabled={busy || done} onClick={complete}>{done ? <CheckCircle2 size={17} /> : <Check size={17} />}{t(done ? 'done' : busy ? 'saving' : 'complete')}</button><button className="button outline" onClick={() => startQuiz('practice', lesson.module)}>{t('practice')}<Arrow /></button></div></article>;
+}
+function LessonActivity({lesson}){
+  const {t,lang}=useApp();
+  const listening=lesson.category==='listening';
+  const canListen=typeof window.speechSynthesis!=='undefined';
+  useEffect(()=>()=>{window.speechSynthesis?.cancel();},[]);
+  function speak(){window.speechSynthesis.cancel();const message=new SpeechSynthesisUtterance(lesson.activity.model);message.lang='es-ES';message.rate=.9;window.speechSynthesis.speak(message);}
+  return <section className="lesson-activity"><h2 lang={lang} dir={lang==='ar'?'rtl':'ltr'}>{t('lessonActivity')}</h2><p>{lesson.activity.instruction}</p>{listening&&<button className="button outline" disabled={!canListen} onClick={speak}><Headphones size={17}/><span lang={lang}>{t('listenActivity')}</span></button>}<details><summary lang={lang} dir={lang==='ar'?'rtl':'ltr'}>{t('showModel')}</summary><p className="preserve-lines">{lesson.activity.model}</p></details></section>;
 }
 export function TestsPage() {
   const { t, module, startQuiz, openSkill, navigate, catalog } = useApp();

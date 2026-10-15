@@ -2,7 +2,7 @@
 
 ## Atualização de 15 de outubro de 2026
 
-- 16 aulas próprias (oito CCSE, oito DELE A2), com fontes de referência e data de revisão na interface. 103 perguntas próprias de prática, com explicações e revisão dos erros. Não são o banco oficial CCSE completo.
+- 48 aulas próprias (24 CCSE, 24 DELE A2), com fontes de referência e data de revisão na interface. As 32 novas aulas incluem três secções, uma atividade com exemplo de resposta e uma pergunta de consolidação específica. 103 perguntas próprias de prática, com explicações e revisão dos erros, além das perguntas das aulas. Não são o banco oficial CCSE completo.
 - 30 cartões de vocabulário com definição e exemplo em espanhol. A classificação de dificuldade agenda a próxima revisão; não é uma nota de exame.
 - Tarefas alternativas de escrita e oralidade, respostas modelo e autoavaliação.
 - Percurso DELE com 25 itens de leitura (60 min), 25 de audição (40 min), duas tarefas escritas (45 min), preparação oral (12 min) e três tarefas orais (12 min). A oralidade requer um interlocutor para ensaiar uma interação real; uma gravação individual não substitui um examinador.
@@ -32,3 +32,7 @@ Os testes de IA e tutor usam fornecedores simulados. Não comprovam qualidade pe
 ## Dados
 
 As alterações ao esquema SQLite são aditivas e preservam contas e histórico existentes na mesma base de dados. O alojamento gratuito no Render continua com disco temporário, conforme solicitado. Uma nova publicação ou reinício pode perder os dados no serviço externo. Não foi contratado nem configurado armazenamento permanente.
+
+## Acesso às aulas
+
+As duas primeiras aulas de cada módulo são gratuitas. O acesso às restantes é controlado no servidor para subscrições CCSE (15 €/mês), DELE A2 (15 €/mês) ou ambos (20 €/mês). Os pagamentos ainda não estão ligados a uma conta Stripe e ficam indisponíveis na demonstração. A integração, a configuração e as verificações pendentes constam de [BILLING.md](BILLING.md). O número de aulas representa o catálogo de estudo; o plano continua a depender da avaliação e da disponibilidade de cada pessoa.
